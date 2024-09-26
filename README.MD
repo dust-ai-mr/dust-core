@@ -80,8 +80,7 @@ The full (so far) Dust family of libraries comprises:
 6. ./gradlew publishMavenLocal
 
 ## Examples
-The examples directory contains:
-dustville - a simple example of digital twinning using Actors; in this case a simple town with homes, rechargeable electric vehicles on streets, a power station heating the homes and charging the cars and a flock of starlings soaring around the power station. The bird simulation alone creates over 8000 Actors.
+The dust-ville project - a simple example of digital twinning using Actors; in this case a simple town with homes, rechargeable electric vehicles on streets, a power station heating the homes and charging the cars and a flock of starlings soaring around the power station. The bird simulation alone creates over 8000 Actors.
 
 The tests directory contains many tests of supported Dust Idioms and are a good introduction to Dust basics.
 
