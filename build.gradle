@@ -1,0 +1,84 @@
+plugins {
+    id 'groovy'
+    id 'application'
+    id 'maven-publish'
+    id 'java-library'
+}
+
+group 'com.mentalresonance'
+version '1.0.1'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    // Needed to get spock snapshot below
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+}
+
+dependencies {
+    // This version for Java 21
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    // This version for Java 21
+    testImplementation platform("org.spockframework:spock-bom:2.4-groovy-4.0-SNAPSHOT")
+    testImplementation 'org.spockframework:spock-core'
+    testImplementation 'org.projectlombok:lombok:1.18.30'
+    testImplementation 'org.slf4j:slf4j-simple:2.0.7'
+    // This version for Java 21
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    compileOnly 'org.slf4j:slf4j-simple:2.0.7'
+
+    api "com.github.ben-manes.caffeine:caffeine:3.1.8"
+    api "de.ruedigermoeller:fst:3.0.3"
+
+    implementation 'com.google.code.gson:gson:2.10.1'
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+}
+
+def testArgs = [
+    '-Xmx16g',
+    '--add-opens=java.base/java.lang=ALL-UNNAMED',
+    '--add-opens=java.base/java.math=ALL-UNNAMED',
+    '--add-opens=java.base/java.util=ALL-UNNAMED',
+    '--add-opens=java.base/java.util.concurrent=ALL-UNNAMED',
+    '--add-opens=java.base/java.net=ALL-UNNAMED',
+    '--add-opens=java.base/java.text=ALL-UNNAMED',
+    '--add-opens=java.sql/java.sql=ALL-UNNAMED'
+]
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    jvmArgs += testArgs
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.debug = false
+    options.compilerArgs << '-g:none' // Ensures no debug information is included
+}
+
+javadoc.options {
+    addStringOption('-release', '21')
+}
+
+tasks.withType(JavaCompile).each {
+    // it.options.compilerArgs.add('-Xlint:preview')
+}
+
+
+java {
+    withSourcesJar()
+}
+

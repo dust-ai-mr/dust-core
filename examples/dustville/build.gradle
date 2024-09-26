@@ -1,0 +1,42 @@
+plugins {
+    id 'groovy'
+    id 'application'
+    id 'java'
+}
+
+group = 'com.mentalresonance.dust'
+version = '0.5.1-SNAPSHOT'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    // Needed to get spock snapshot below
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+}
+
+dependencies {
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    implementation 'org.apache.groovy:groovy:4.0.15'
+    implementation 'org.apache.groovy:groovy-json:4.0.15'
+    implementation 'org.projectlombok:lombok:1.18.30'
+    implementation 'org.slf4j:slf4j-simple:2.0.7'
+
+    implementation "org.nanohttpd:nanohttpd:2.3.1"
+    implementation "org.nanohttpd:nanohttpd-websocket:2.3.1"
+
+    implementation('com.mentalresonance:dust-core:0.5.1-SNAPSHOT')
+
+    implementation 'com.google.code.gson:gson:2.10.1'
+}
+
+application {
+    mainClass = "com.mentalresonance.dust.demos.dustville.Main"
+    applicationDefaultJvmArgs = [
+        '-Xmx16g'
+    ]
+}
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
