@@ -6,7 +6,7 @@ plugins {
 }
 
 group 'com.mentalresonance'
-version '1.0.1'
+version '1.0.2'
 
 repositories {
     mavenLocal()
@@ -43,7 +43,7 @@ publishing {
 }
 
 def testArgs = [
-    '-Xmx16g',
+    '-Xmx20g',
     '--add-opens=java.base/java.lang=ALL-UNNAMED',
     '--add-opens=java.base/java.math=ALL-UNNAMED',
     '--add-opens=java.base/java.util=ALL-UNNAMED',
@@ -65,8 +65,9 @@ java {
 }
 
 tasks.withType(JavaCompile) {
-    options.debug = false
-    options.compilerArgs << '-g:none' // Ensures no debug information is included
+    options.debug = true
+    options.debugOptions.debugLevel = 'source,lines,vars'
+    // options.compilerArgs << '-g:none' // Ensures no debug information is included
 }
 
 javadoc.options {

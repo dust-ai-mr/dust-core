@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
 import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*;
@@ -699,8 +700,7 @@ public class Actor implements Runnable {
                 log.warn("Child %s of %s already exists !!".formatted(name, self.path));
                 return exists;
             }
-            var cons = context.actorConstructors.get(props.actorClass);
-            Actor actor = (Actor)cons.newInstance(props.actorArgs);
+            Actor actor = createInstanceWithParameters(props.actorClass, props.actorArgs);
             ActorRef ref = new ActorRef(self.path, name, context);
 
             ref.props = props;
@@ -717,10 +717,82 @@ public class Actor implements Runnable {
             return actor.self;
         }
         catch (Exception e) {
-            e.printStackTrace();
+            log.error("Could not create Actor {} error: {}", props.actorClass, e.getMessage());
             throw new ActorInstantiationException(e.getMessage());
         }
     }
+
+    Actor createInstanceWithParameters(Class<?> actorClass, Object[] args) throws Exception {
+        ArrayList<Class<?>> classList = new ArrayList<>();
+        classList.add(actorClass);
+        for (Object obj : args) {
+            if (obj != null) {
+                Class clazz = obj.getClass();
+                if (clazz.isPrimitive()) {
+                    if (clazz == int.class) {
+                        classList.add(Integer.class);
+                    } else if (clazz == boolean.class) {
+                        classList.add(Boolean.class);
+                    } else if (clazz == byte.class) {
+                        classList.add(Byte.class);
+                    } else if (clazz == char.class) {
+                        classList.add(Character.class);
+                    } else if (clazz == double.class) {
+                        classList.add(Double.class);
+                    } else if (clazz == float.class) {
+                        classList.add(Float.class);
+                    } else if (clazz == long.class) {
+                        classList.add(Long.class);
+                    } else if (clazz == short.class) {
+                        classList.add(Short.class);
+                    } else if (clazz == void.class) {
+                        classList.add(Void.class);
+                    }
+                } else {
+                    classList.add(clazz);
+                }
+            } else {
+                classList.add(null);
+            }
+        }
+        Constructor cons = context.actorConstructors.get(classList);
+        return (Actor) cons.newInstance(args);
+    }
+
+    private  List<Class<?>> autoboxPrimitiveTypes(List<Class<?>> classList) {
+        List<Class<?>> autoboxedList = new ArrayList<>();
+
+        for (Class<?> clazz : classList) {
+            // Check if the class is a primitive type, and if so, add the corresponding wrapper class
+            if (clazz.isPrimitive()) {
+                if (clazz == int.class) {
+                    autoboxedList.add(Integer.class);
+                } else if (clazz == boolean.class) {
+                    autoboxedList.add(Boolean.class);
+                } else if (clazz == byte.class) {
+                    autoboxedList.add(Byte.class);
+                } else if (clazz == char.class) {
+                    autoboxedList.add(Character.class);
+                } else if (clazz == double.class) {
+                    autoboxedList.add(Double.class);
+                } else if (clazz == float.class) {
+                    autoboxedList.add(Float.class);
+                } else if (clazz == long.class) {
+                    autoboxedList.add(Long.class);
+                } else if (clazz == short.class) {
+                    autoboxedList.add(Short.class);
+                } else if (clazz == void.class) {
+                    autoboxedList.add(Void.class);
+                }
+            } else {
+                // If it's not a primitive, just add the class as-is
+                autoboxedList.add(clazz);
+            }
+        }
+
+        return autoboxedList;
+    }
+
 
     /**
      * Convert a path into an ActorRef. Path can be of the form ..

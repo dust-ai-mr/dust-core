@@ -260,7 +260,7 @@ public class ActorRef implements Serializable {
 
     @Override
     public String toString() {
-        return (null == mailBox) ? path + " [Remote]" :  (null != props ? props.actorClass.getSimpleName() : "NULL") + ": " + path + "  @" + Integer.toHexString(this.hashCode()) +" [Local]";
+        return path;
     }
 
     /**

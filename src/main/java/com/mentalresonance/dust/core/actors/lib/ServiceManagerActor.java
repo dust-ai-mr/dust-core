@@ -55,7 +55,7 @@ public class ServiceManagerActor extends Actor {
      * @param maxWorkers max slots available
      * @return Props
      */
-    public static Props props(Props serviceProps, int maxWorkers) {
+    public static Props props(Props serviceProps, Integer maxWorkers) {
         return Props.create(ServiceManagerActor.class, serviceProps, maxWorkers);
     }
 
@@ -64,7 +64,7 @@ public class ServiceManagerActor extends Actor {
      * @param serviceProps the ServiceActor props
      * @param maxWorkers max slots available
      */
-    public ServiceManagerActor(Props serviceProps, int maxWorkers) {
+    public ServiceManagerActor(Props serviceProps, Integer maxWorkers) {
         this.serviceProps = serviceProps;
         this.maxWorkers = maxWorkers;
         currentWorkers = 0;

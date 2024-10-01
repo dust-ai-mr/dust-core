@@ -55,7 +55,7 @@ public abstract class PersistentServiceManagerActor extends PersistentActor {
      * @param maxWorkers - max number of workers
      * @return Props
      */
-    public static Props props(Props serviceProps, int maxWorkers) {
+    public static Props props(Props serviceProps, Integer maxWorkers) {
         return Props.create(PersistentServiceManagerActor.class, serviceProps, maxWorkers, 5000L);
     }
 
@@ -66,7 +66,7 @@ public abstract class PersistentServiceManagerActor extends PersistentActor {
      * @param delayMS - interval in ms between snapshot saves
      * @return Props
      */
-    public static Props props(Props serviceProps, int maxWorkers, Long delayMS) {
+    public static Props props(Props serviceProps, Integer maxWorkers, Long delayMS) {
         return Props.create(PersistentServiceManagerActor.class, serviceProps, maxWorkers, delayMS);
     }
 
@@ -76,7 +76,7 @@ public abstract class PersistentServiceManagerActor extends PersistentActor {
      * @param maxWorkers - max number of workers
      * @param delayMS - interval in ms between snapshot saves
      */
-    public PersistentServiceManagerActor(Props serviceProps, int maxWorkers, Long delayMS) {
+    public PersistentServiceManagerActor(Props serviceProps, Integer maxWorkers, Long delayMS) {
         this.serviceProps = serviceProps;
         this.maxWorkers = maxWorkers;
         this.delayMS = delayMS;
@@ -89,7 +89,7 @@ public abstract class PersistentServiceManagerActor extends PersistentActor {
      * @param serviceProps - Props for the service workers
      * @param maxWorkers - max number of workers
      */
-    public PersistentServiceManagerActor(Props serviceProps, int maxWorkers) {
+    public PersistentServiceManagerActor(Props serviceProps, Integer maxWorkers) {
         this(serviceProps, maxWorkers, 5000L);
     }
 

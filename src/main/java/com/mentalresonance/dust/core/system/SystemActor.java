@@ -49,7 +49,7 @@ public class SystemActor extends Actor {
      * @param logDeadLetters if true dead letters are to be logged
      * @return Props
      */
-    public static Props props(boolean logDeadLetters) {
+    public static Props props(Boolean logDeadLetters) {
         return Props.create(SystemActor.class, logDeadLetters);
     }
 
@@ -57,7 +57,7 @@ public class SystemActor extends Actor {
      * Constructor
      * @param logDeadLetters if true dead letters are to be logged
      */
-    public SystemActor(boolean logDeadLetters) {
+    public SystemActor(Boolean logDeadLetters) {
         this.logDeadLetters = logDeadLetters;
     }
 

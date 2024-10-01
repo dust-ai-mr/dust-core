@@ -72,14 +72,100 @@ public class ActorContext {
         this.system = system;
     }
 
-    // Actor class -> Constructor for the Actor
     /**
      * Cache of Actor constructors. This is self loading and will get constructors on demand. Purely for
      * speed.
+     * Key List<Class> is [ActorClass, Arg1Class, Arg2Class ..... ]
+     * Value is the constructor matching this signature
      */
-    public final LoadingCache<Class, Constructor> actorConstructors = Caffeine.newBuilder()
+    public final LoadingCache<List<Class<?>>, Constructor> actorConstructors = Caffeine.newBuilder()
             .maximumSize(4096)
-            .build(k -> k.getConstructors()[0]);
+            .build(k -> constructorFor(k));
+
+    /**
+     * Appropriate constructor was not cached, so take list of [ActorClass, Arg1Class, Arg2Class..] and
+     * find the appropriate constructor.
+     * @param classAndArgs List of (already boxed) classes defining the call
+     * @return appropriate constructor
+     * @throws Exception if we cannot do this
+     */
+    private Constructor<?> constructorFor(List<Class<?>> classAndArgs) throws Exception {
+        try {
+            List<Constructor<?>> constructors = Arrays.stream(classAndArgs.get(0).getConstructors()).toList();
+            List<Class<?>> argClasses = classAndArgs.size() > 1 ? classAndArgs.subList(1, classAndArgs.size()) : List.of();
+            List<Constructor> matchingConstructors = new ArrayList<>();
+
+            for (Constructor cons : constructors ) {
+                List<Class<?>> parameterTypes = autoboxPrimitiveTypes(cons.getParameterTypes());
+                if (areParametersMatching(parameterTypes, argClasses)) {
+                    return cons;
+                }
+            }
+
+            throw new Exception("No constructor found for " + classAndArgs.get(0));
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+    }
+
+    /**
+     * Do parameter types in constructor match the classes of the arguments
+     * @param parameterTypes constructor types
+     * @param argsClasses argument types
+     * @return true or false
+     */
+    private static boolean areParametersMatching(List<Class<?>> parameterTypes, List<Class<?>> argsClasses) {
+        if (parameterTypes.size() != argsClasses.size()) {
+            return false;
+        }
+        for (int i = 0; i < parameterTypes.size(); i++) {
+            Class<?> clazz = argsClasses.get(i);
+            if (clazz != null && !(parameterTypes.get(i).isAssignableFrom(clazz))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Primitive types (!) cannot be checked by isAssignableFrom, so we box them here if necessary
+     * @param classList array of types - possible some primitive
+     * @return list of types - boxed where necessary
+     */
+    private  List<Class<?>> autoboxPrimitiveTypes(Class<?>[] classList) {
+        List<Class<?>> autoboxedList = new ArrayList<>();
+
+        for (Class<?> clazz : classList) {
+            if (clazz.isPrimitive()) {
+                if (clazz == int.class) {
+                    autoboxedList.add(Integer.class);
+                } else if (clazz == boolean.class) {
+                    autoboxedList.add(Boolean.class);
+                } else if (clazz == byte.class) {
+                    autoboxedList.add(Byte.class);
+                } else if (clazz == char.class) {
+                    autoboxedList.add(Character.class);
+                } else if (clazz == double.class) {
+                    autoboxedList.add(Double.class);
+                } else if (clazz == float.class) {
+                    autoboxedList.add(Float.class);
+                } else if (clazz == long.class) {
+                    autoboxedList.add(Long.class);
+                } else if (clazz == short.class) {
+                    autoboxedList.add(Short.class);
+                } else if (clazz == void.class) {
+                    autoboxedList.add(Void.class);
+                }
+            } else {
+                // If it's not a primitive, just add the class as-is
+                autoboxedList.add(clazz);
+            }
+        }
+
+        return autoboxedList;
+    }
 
     /**
      * Resolve a path to an ActorRef. The path must be rooted at '/'
