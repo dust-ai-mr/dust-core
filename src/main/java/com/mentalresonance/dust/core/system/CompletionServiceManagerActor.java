@@ -33,7 +33,7 @@ public class CompletionServiceManagerActor extends ServiceManagerActor {
      * Constructor
      * @param maxWorkers max workers for this service
      */
-    public CompletionServiceManagerActor(int maxWorkers) {
+    public CompletionServiceManagerActor(Integer maxWorkers) {
         super(CompletionServiceActor.props(), maxWorkers);
     }
 }

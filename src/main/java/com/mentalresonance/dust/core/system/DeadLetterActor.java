@@ -50,7 +50,7 @@ public class DeadLetterActor extends PubSubActor {
      * @param logDeadLetters if true log dead letters
      * @return Props
      */
-    public static Props props(boolean logDeadLetters) {
+    public static Props props(Boolean logDeadLetters) {
         return Props.create(DeadLetterActor.class, logDeadLetters);
     }
 
@@ -58,7 +58,7 @@ public class DeadLetterActor extends PubSubActor {
      * Constructor
      * @param logDeadLetters if true log dead letters
      */
-    public DeadLetterActor(boolean logDeadLetters) {
+    public DeadLetterActor(Boolean logDeadLetters) {
         this.logDeadLetters = logDeadLetters;
     }
 
