@@ -66,10 +66,10 @@ Dust is licensed under the Apache 2.0 open source license.
 ## Libraries
 The full (so far) Dust family of libraries comprises:
 1. dust-core - this library. Full support for local and remote Actors and a lot of Dusty idioms
-2. dust-http - support for integrating http and Actor message passing. (To be released soon)
-3. dust-html - support for creating Actor pipelines that do html document processing ("")
-4. dust-feeds - library for creating feeds of various kinds - RSS clients, Web crawlers, search engines (via SearxNG) ("")
-5. dust-nlp - LLM and Spacey support via Actors which permit the creation of NLP pipelines ("")
+2. dust-http - support for integrating http and Actor message passing. 
+3. dust-html - support for creating Actor pipelines that do html document processing 
+4. dust-feeds - library for creating feeds of various kinds - RSS clients, Web crawlers, search engines (via SearxNG) (Coming)
+5. dust-nlp - LLM and Spacey support via Actors which permit the creation of NLP pipelines (Coming)
 
 ## Getting started
 1. Make sure you have Java 21 or greater and Gradle installed
