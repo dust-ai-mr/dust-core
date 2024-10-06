@@ -68,8 +68,8 @@ The full (so far) Dust family of libraries comprises:
 1. dust-core - this library. Full support for local and remote Actors and a lot of Dusty idioms
 2. dust-http - support for integrating http and Actor message passing. 
 3. dust-html - support for creating Actor pipelines that do html document processing 
-4. dust-feeds - library for creating feeds of various kinds - RSS clients, Web crawlers, search engines (via SearxNG) (Coming)
-5. dust-nlp - LLM and Spacey support via Actors which permit the creation of NLP pipelines (Coming)
+4. dust-feeds - library for creating feeds of various kinds - RSS clients, Web crawlers, search engines (via SearxNG) 
+5. dust-nlp - LLM and Spacey support via Actors which permit the creation of NLP pipelines
 
 ## Getting started
 1. Make sure you have Java 21 or greater and Gradle installed
@@ -80,9 +80,12 @@ The full (so far) Dust family of libraries comprises:
 6. ./gradlew publishMavenLocal
 
 ## Examples
-The dust-ville project - a simple example of digital twinning using Actors; in this case a simple town with homes, rechargeable electric vehicles on streets, a power station heating the homes and charging the cars and a flock of starlings soaring around the power station. The bird simulation alone creates over 8000 Actors.
+* The dust-ville project - a simple example of digital twinning using Actors; in this case a simple town with homes, rechargeable electric vehicles on streets, a power station heating the homes and charging the cars and a flock of starlings soaring around the power station. The bird simulation alone creates over 8000 Actors.
 
-The tests directory contains many tests of supported Dust Idioms and are a good introduction to Dust basics.
+* The tests directory contains many tests of supported Dust Idioms and are a good introduction to Dust basics.
+
+* A news reader mini-app in dust-nlp. Automatically finds new RSS feeds relevant to a given topic, 
+monitors these feeds in real time for topic-matching articles and produces summaries of the articles.
 
 ## Support / Applications Development
 Contact alan@mentalresonance.com  
