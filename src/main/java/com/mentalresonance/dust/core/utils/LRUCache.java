@@ -31,7 +31,7 @@ import java.util.Set;
  * @param <A> - key class
  * @param <B> - value class
  */
-public class LRUCache<A, B> implements Serializable {
+public class LRUCache<A, B> implements Serializable, Map<A, B> {
     /**
      * maxEntries in cache. Public so we can serialize
      */
