@@ -35,6 +35,11 @@ class OneForOneSupervision extends Specification {
 		}
 
 		@Override
+		void postStop() {
+			log.info "${self.path} has stopped"
+		}
+
+		@Override
 		ActorBehavior createBehavior() {
 			(messsage) -> {
 				switch(messsage)
@@ -105,7 +110,7 @@ class OneForOneSupervision extends Specification {
 			log.info "Starting 'Restart' strategy"
 			system.context.actorOf( Supervisor.props(SS_RESTART, MODE_ONE_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
-					then:
+		then:
 			true
 	}
 }

@@ -42,7 +42,7 @@ class DeadMansHandleCancelTest extends Specification {
 				switch(message) {
 					case StartMsg:
 						log.info "Got start .. waiting to drop handle or be stopped .."
-						sleep(200L)
+						safeSleep(200L)
 						tellSelf(message)
 						break
 

@@ -18,7 +18,7 @@ class OneDeadLetter extends Specification {
 			ActorSystem system = new ActorSystem("DeadLetter")
 			system.context.actorSelection('/user/nothere').tell(new PingMsg(), null)
 			system.stop()
-					then:
+		then:
 			true
 	}
 

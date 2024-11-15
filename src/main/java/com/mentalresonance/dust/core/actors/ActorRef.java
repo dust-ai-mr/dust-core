@@ -170,8 +170,12 @@ public class ActorRef implements Serializable {
                     mailBox.queue.add(sentMessage);
                 }
                 else {
-                    if (!PersistentActor.isInShutdown())
-                        context.getDeadLetterActor().tell(new DeadLetter(sentMessage.message, path, sender), null);
+                    if (!PersistentActor.isInShutdown()) { // May be in shutdown but false -- need to fix this
+                        ActorRef deadLetterRef =context.getDeadLetterActor();
+                        if (deadLetterRef != null && !deadLetterRef.mailBox.dead) { // We may be globally stopping
+                            deadLetterRef.tell(new DeadLetter(sentMessage.message, path, sender), null);
+                        }
+                    }
                 }
             }
             else {
@@ -201,6 +205,7 @@ public class ActorRef implements Serializable {
         }
         catch (Throwable e) {
             log.error(e.getMessage());
+            e.printStackTrace();
             success = false;
         }
         return success;

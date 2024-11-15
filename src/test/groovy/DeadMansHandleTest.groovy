@@ -37,7 +37,7 @@ class DeadMansHandleTest extends Specification {
 				switch(message) {
 					case StartMsg:
 						log.info "Got start - waiting for handle drop"
-						sleep(200L)
+						safeSleep(200L)
 						tellSelf(message)
 				}
 			}

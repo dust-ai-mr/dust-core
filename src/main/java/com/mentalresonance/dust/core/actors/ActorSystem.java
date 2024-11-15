@@ -225,10 +225,13 @@ public class ActorSystem {
      * If stopping (closure) is defined run it last. <b>Note</b> that shutdown is asynchronous
      * so while stopping is called last it is not guaranteed that the ActorSystem is completely shut down
      * (i.e. the entire Actor tree is stopped)
+     *
+     * @param inShutdown flag to indicate we are in clean shutdown. PersistentActors should not delete their state. If
+     * false then they probably will delete their state
      */
-    public void stop() {
+    public void stop(boolean inShutdown) {
 
-        PersistentActor.setInShutdown(true);
+        PersistentActor.setInShutdown(inShutdown);
         context.stop(guardianRef);
 
         try {
@@ -254,6 +257,11 @@ public class ActorSystem {
         if (null != stopping)
             stopping.run();
     }
+
+    /**
+     * Default stop. inShutdown is true so Actors will keep their state for next time
+     */
+    public void stop() { stop(true); }
 
     /**
      * Run server on port with context /<actor-system-name>

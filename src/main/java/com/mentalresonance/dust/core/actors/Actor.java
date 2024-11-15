@@ -27,7 +27,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
 import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*;
@@ -89,8 +88,6 @@ public class Actor implements Runnable {
 
     private final Object LOCK = new Object();
 
-    private Boolean tellParentOnStop = true;
-
     private final ArrayDeque<ActorBehavior> behaviors = new ArrayDeque<>();
 
     /**
@@ -107,6 +104,11 @@ public class Actor implements Runnable {
      * Optional dead man's handle
      */
     private Cancellable deadMansHandle = null;
+
+    /**
+     * While running is true I process messages
+     */
+    boolean running, stopping = false, hardStop = false;
 
     /**
      * Constructor. <b>This should not be called directly</b> rather rely on it being called
@@ -137,7 +139,7 @@ public class Actor implements Runnable {
      * @throws Exception can be thrown on preStart.
      */
     protected void preStart() throws Exception {
-        log.trace("Started: " + self.path + " context:" + context);
+        // log.trace("Started: " + self.path + " context:" + context);
     }
 
     /**
@@ -146,7 +148,7 @@ public class Actor implements Runnable {
      * @throws Exception can be thrown on postStop.
      */
     protected void postStop() throws Exception {
-        log.trace("Stopped: " + self.path);
+        // log.trace("Stopped: " + self.path);
     }
 
     /**
@@ -154,7 +156,7 @@ public class Actor implements Runnable {
      * @param t - The error which caused the restart
      */
     protected void preRestart(Throwable t) {
-        log.trace("Restarted: " + self.path + " because of " + t.getMessage());
+        // log.trace("Restarted: " + self.path + " because of " + t.getMessage());
     }
 
     /**
@@ -211,10 +213,13 @@ public class Actor implements Runnable {
      * this is *not* an expensive action.
      * @param millis milliseconds to sleep
      */
-    protected void sleep(Long millis) {
+    protected void safeSleep(Long millis) {
         try {
             Thread.sleep(millis);
-        } catch (Exception ignore) {} // Don't want to throw exception if we are interrupted by a stop
+        } catch (InterruptedException e) {
+            // Someone is trying to stop us. So interrupt us again to actually start the stopping process
+            self.thread.interrupt();
+        }
     }
 
     /**
@@ -259,8 +264,6 @@ public class Actor implements Runnable {
      */
     public void run()
     {
-        boolean running;
-
         try {
             switch (self.lifecycle) {
                 case ActorRef.LC_RECOVERED -> {
@@ -307,17 +310,14 @@ public class Actor implements Runnable {
                 sender = sentMessage.sender;
             }
             /*
-             * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop
+             * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
+             * This is a hard stop.
              * running if my lifecycle is LC_START otherwise there is an ALL_FOR_ONE supervision going on.
              * In this case my parent will have set my lifecycle to tell me what to do:
              */
             catch (InterruptedException x) {
-                if (self.lifecycle == ActorRef.LC_RESUME) {
-                    self.lifecycle = ActorRef.LC_START;
-                    onResume();
-                } else {
-                    running = false;
-                }
+                hardStop = true;
+                startStopping();
                 continue;
             }
 
@@ -325,12 +325,17 @@ public class Actor implements Runnable {
              * If I'm holding a message then process it. If not and I got here I was probably interrupted via
              * a context.stop()
              */
-           //if (sentMessage != null) {
-                try {
-                    if (null == sentMessage.message) {
-                        log.warn("%s sent null message to %s. Ignored".formatted(sender.toString(), self.path));
-                    }
-                    else switch (sentMessage.message)
+            try {
+                Serializable sentMsg = sentMessage.message;
+
+                if (null == sentMsg) {
+                    log.warn("%s sent null message to %s. Ignored".formatted(sender.toString(), self.path));
+                }
+                else {
+                    if (stopping && ! (sentMsg instanceof _Stopped))
+                        continue;
+
+                    switch (sentMsg)
                     {
                         /*
                          * _ResolveActorMsg is used to resolve a path. If nothing is left then the path is me and I complete
@@ -363,15 +368,10 @@ public class Actor implements Runnable {
 
                         case UnWatchMsg ignored ->  watchers.remove(sender);
 
-                        /*
-                         * Sent to me when my parent is stopping. I stop but don't send a Terminating msg
-                         */
-                        case _ParentStoppingMsg ignored -> {
-                            tellParentOnStop = false;
-                            running = false;
+                        case PoisonPill ignored -> {
+                            hardStop = true;
+                            startStopping();
                         }
-
-                        case PoisonPill ignored -> running = false;
 
                         case DeleteChildMsg msg -> context.stop(actorSelection("./" + msg.getName()).getRef());
 
@@ -384,6 +384,8 @@ public class Actor implements Runnable {
                         case _Stopped ignored -> {
                             if (null == children.remove(sender.name))
                                 log.warn(self.path + ": child: " + sender.name + " was not in children list");
+                            if (stopping && children.isEmpty())
+                                running = false;
                         }
 
                         // If I am a request do it - if a Response to my request of another Actor pass it to my behavior
@@ -448,49 +450,52 @@ public class Actor implements Runnable {
                         }
                     }
                 }
-                /*
-                 * Something has gone wrong. Tell my parent and then wait on the Lock. My parent will make
-                 * a recovery strategy decision, set my lifecycle appropriately then interrupt my thread.
-                 */
-                catch (Throwable t)
-                {
-                    try { // Sometimes toString()ing the message can throw an Exception !!
-                        log.info(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
-                    } catch (Exception e) {
-                        log.info(self.path + ": Exception when processing un-displayable message: " + t.getMessage());
-                    }
-                    if (null != parent) {
-                        parent.tell(new _Throwable(t), self);
-                        try {
-                            synchronized (LOCK) {
-                                LOCK.wait();
-                            }
+            }
+            /*
+             * Something has gone wrong. Tell my parent and then wait on the Lock. My parent will make
+             * a recovery strategy decision, set my lifecycle appropriately then interrupt my thread.
+             */
+            catch (Throwable t)
+            {
+                try { // Sometimes toString()ing the message can throw an Exception !!
+                    log.info(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
+                } catch (Exception e) {
+                    log.info(self.path + ": Exception when processing un-displayable message: " + t.getMessage());
+                }
+                if (null != parent) {
+                    parent.tell(new _Throwable(t), self);
+                    try {
+                        synchronized (LOCK) {
+                            LOCK.wait();
                         }
-                        /*
-                         * My parent will set what I have to do in my self.lifecycle field
-                         */
-                        catch (InterruptedException e)
+                    }
+                    /*
+                     * My parent will set what I have to do in my self.lifecycle field
+                     */
+                    catch (InterruptedException e)
+                    {
+                        switch (self.lifecycle)
                         {
-                            switch (self.lifecycle)
-                            {
-                                case ActorRef.LC_RESTART, ActorRef.LC_STOP -> running = false;
+                            case ActorRef.LC_STOP -> startStopping();
 
-                                case ActorRef.LC_RESUME -> {
-                                    try {
-                                        onResume();
-                                    } catch (Exception x) {
-                                        log.error("{} onResume() exception: {}", self, x.getMessage());
-                                        // Todo: what ???
-                                    }
+                            case ActorRef.LC_RESTART -> startStopping(); // Stop and let my parent restart me
+
+                            case ActorRef.LC_RESUME -> {
+                                try {
+                                    onResume();
+                                } catch (Exception x) {
+                                    log.error("{} onResume() exception: {}", self, x.getMessage());
+                                    // Todo: what ???
                                 }
-                                default ->
-                                    log.error("{}: unknown lifecycle state in resumption: {}", self, self.lifecycle);
                             }
+                            default ->
+                                log.error("{}: unknown lifecycle state in resumption: {}", self, self.lifecycle);
                         }
                     }
                 }
-           // }
+            }
         }
+
         /*
          * We have stopped - flush any cached reference in context
          */
@@ -498,8 +503,10 @@ public class Actor implements Runnable {
         /*
          * If I'm exiting because of a restart then don't tell parent, keep mailbox and don't call postStop()
          */
-        if (self.lifecycle != ActorRef.LC_RESTART)
+        if (self.lifecycle != ActorRef.LC_RESTART || hardStop || stopping)
         {
+           watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
+
            try {
                 postStop();
                 if (null != deadMansHandle)
@@ -511,13 +518,29 @@ public class Actor implements Runnable {
             }
             self.mailBox.queue = null;
             self.mailBox.dead = true;
-            if (null != parent && tellParentOnStop)
+            if (null != parent) {
                 parent.tell(new _Stopped(), self);
+            }
+        } else {
+            running = true; // Parent will restart() us
+            stopping = false; // In case of restart
         }
+        // log.trace("{} stopped", self.path);
+    }
 
-        children.values().forEach((ref) -> ref.tell(new _ParentStoppingMsg(), null));
-
-        watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
+    /**
+     * If necessary kill our children waiting until they are all stopped.
+     * If no children simply decide if we are going to stop of not.
+     */
+    private void startStopping() {
+        // log.trace("{} stopping, Has {} children", self.path, children.size());
+        if (! children.isEmpty()) {
+            stopping = true;
+            children.forEach((name, child) -> context.stop(child));
+        }
+        else {
+            running = false;
+        }
     }
 
     /**
@@ -533,7 +556,7 @@ public class Actor implements Runnable {
      * @param newBehavior the new behavior to follow
      */
     public void stashBecome(ActorBehavior newBehavior) {
-        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        log.info("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
         behaviors.push(this.behavior);
         become(newBehavior);
     }
@@ -548,7 +571,7 @@ public class Actor implements Runnable {
 
         if (! behaviors.isEmpty()) {
             behavior = behaviors.pop();
-            log.trace("Popping behavior = %s".formatted(behavior));
+            // log.trace("Popping behavior = %s".formatted(behavior));
             become(behavior);
         } else
             throw new Exception("Empty behavior queue on unBecome");
@@ -883,6 +906,7 @@ public class Actor implements Runnable {
 
             ref.lifecycle = ActorRef.LC_RESTART;
             ref.thread = Thread.startVirtualThread(actor);
+            // log.trace("{} restarted ${}", self.path, ref);
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -925,11 +949,7 @@ public class Actor implements Runnable {
     /*
      * Internal messages
      */
-    static class _Stopped implements Serializable { }
-
-    // Special message to stop children without them notifying the parent they are stopping
-    // (because the parent is probably already gone ....)
-    static class _ParentStoppingMsg implements Serializable { }
+    protected class _Stopped implements Serializable { }
 
     static class _Throwable implements Serializable {
         final Throwable thrown;

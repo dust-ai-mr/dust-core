@@ -93,7 +93,7 @@ public class PodDeadLetterActor extends Actor {
 
                     /**
                      * We do not start an Actor to accept a message it has sent itself! this can happen when we stop
-                     * ourselves with messages still in the Q. They gop to dead letters and then here. But I stopped myself !!
+                     * ourselves with messages still in the Q. They go to dead letters and then here. But I stopped myself !!
                      */
                     if (recipientPath == senderPath) {
                         return;
@@ -118,9 +118,6 @@ public class PodDeadLetterActor extends Actor {
                             if (null != (acceptedMessages = pathCache.get(recipientParentPath))) {
 
                                 if (0 == acceptedMessages.size() || acceptedMessages.contains(dl.getMessage().getClass())) {
-                                    log.debug("DLM: %s -> %s : %s".formatted(
-                                        dl.getSender(), dl.toString(), recipientPath
-                                    ));
                                     context.actorSelection(recipientParentPath).tell(
                                         new DeadLetterProxyMsg(nameFromPath(recipientPath), dl.getMessage(), dl.getSender()),
                                         dl.getSender()
