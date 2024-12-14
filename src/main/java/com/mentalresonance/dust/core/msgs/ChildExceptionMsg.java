@@ -52,4 +52,9 @@ public class ChildExceptionMsg implements Serializable {
         this.child = child;
         this.exception = exception;
     }
+
+    @Override
+    public String toString() {
+        return "ChildExceptionMsg from child: " + child + " exception: " + exception.getMessage();
+    }
 }

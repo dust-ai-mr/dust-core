@@ -71,6 +71,14 @@ public class LRUCache<A, B> implements Serializable, Map<A, B> {
     }
 
     /**
+     * Make shallow copy of underlying cache
+     * @return LinkedHashMap clone
+     */
+    public LinkedHashMap<A, B> shallowCopy() {
+        return new LinkedHashMap<>(_cache);
+    }
+
+    /**
      * Cache size
      * @return number of elements cached
      */

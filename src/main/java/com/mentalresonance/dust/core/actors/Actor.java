@@ -301,13 +301,14 @@ public class Actor implements Runnable {
          * to our currently defined user behaviour.
          */
 
-        SentMessage sentMessage;
+        SentMessage sentMessage = null;
 
         while (running)
         {
             try {
                 sentMessage = self.mailBox.queue.take();
                 sender = sentMessage.sender;
+                log.trace("{} got message {}", self.path, sentMessage.message);
             }
             /*
              * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
@@ -316,6 +317,7 @@ public class Actor implements Runnable {
              * In this case my parent will have set my lifecycle to tell me what to do:
              */
             catch (InterruptedException x) {
+                log.trace("{} interrupted while processing {}", self.path, sentMessage);
                 hardStop = true;
                 startStopping();
                 continue;
@@ -332,8 +334,10 @@ public class Actor implements Runnable {
                     log.warn("%s sent null message to %s. Ignored".formatted(sender.toString(), self.path));
                 }
                 else {
-                    if (stopping && ! (sentMsg instanceof _Stopped))
+                    if (stopping && ! (sentMsg instanceof _Stopped)) {
+                        log.trace("{} ignoring sent message {} as I am stopping", self.path, sentMessage);
                         continue;
+                    }
 
                     switch (sentMsg)
                     {
@@ -344,6 +348,7 @@ public class Actor implements Runnable {
                          * return null - and let the resolver replace it with a cloned dead letter actor
                          */
                         case ActorContext._ResolveActorMsg res -> {
+                            log.trace("{} got resolve message {} from {}", self.path, res.path, sender);
                             if (res.path.isEmpty()) {
                                 if (!res.ref.complete(self)) {
                                     log.error("Resolved path " + self.path + " did not complete properly");
@@ -354,11 +359,11 @@ public class Actor implements Runnable {
                                 ActorRef child = children.get(next);
 
                                 if (null == child) {
-                                    // log.info(String.format("%s is not a child of %s", next, self.path));
+                                    log.trace("Resolving: {} is not a child of {}", next, self.path);
                                     res.ref.complete(null);
                                 }
                                 else {
-                                    // log.info(String.format("Forwarding resolve to %s which is  a child of %s", next, self.path));
+                                    log.trace("Forwarding resolve to {} which is  a child of {}", child, self.path);
                                     child.tell(res, self);
                                 }
                             }
@@ -860,19 +865,13 @@ public class Actor implements Runnable {
                 }
                 else if (path.startsWith("./")) {
                     /*
-                     * We have an issue here. If I am sending a message to a child of mine and that child does not
-                     * exist then I will get _ResolveActorMsg - but I cannot process that because I am sat in my tell
-                     * (i.e. I've blocked myself). So we have to check for that situation here.
-                     *
-                     * If I would go to dead letters then mark the selection as such and its tell() will
-                     * wrap the message in a DeadLetter and send it off.
+                     * We have an issue here. If my path is not in the resolver cache I will be sent a _ResolveMsg
+                     * which I cannot process because I am still handling the ActorSelection resolution,
+                     * so I put myself in the cache to make sure this does not happen
                      */
-                    String childName = path.substring(2);
-
-                    if (getChildren().stream().noneMatch(child -> child.name == childName)) {
-                        selection.setDead(true);
-                    }
-                    path = self.path + childName;
+                    String childPath = path.substring(2);
+                    context.encache(self.path, self);
+                    path = self.path + childPath;
                 }
                 else
                     path = self.path + path;

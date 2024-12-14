@@ -42,7 +42,7 @@ import java.util.List;
  */
 @Slf4j
 public class PodDeadLetterActor extends Actor {
-    final HashMap<String, List<Class>> pathCache = new HashMap();
+    final HashMap<String, List<Class<?>>> pathCache = new HashMap<>();
 
     /**
      * props
@@ -58,8 +58,8 @@ public class PodDeadLetterActor extends Actor {
      * @param paths list of [path, [trigger classes]]
      */
 	public PodDeadLetterActor(List<List> paths) {
-        for (List path :paths) {
-            pathCache.put(path.get(0).toString(), (List<Class>)path.get(1));
+        for (List<?> path :paths) {
+            pathCache.put(path.get(0).toString(), (List<Class<?>>)path.get(1));
         }
     }
 
@@ -87,15 +87,13 @@ public class PodDeadLetterActor extends Actor {
                 case DeadLetter dl -> {
                     String recipientPath = normalizePath(dl.getPath());
                     String senderPath = null != dl.getSender() ? dl.getSender().path : null;
-                    String recipientParentPath;
-
-                    recipientParentPath = recipientPath.substring(0, recipientPath.lastIndexOf('/'));
+                    String recipientParentPath = recipientPath.substring(0, recipientPath.lastIndexOf('/'));
 
                     /**
                      * We do not start an Actor to accept a message it has sent itself! this can happen when we stop
                      * ourselves with messages still in the Q. They go to dead letters and then here. But I stopped myself !!
                      */
-                    if (recipientPath == senderPath) {
+                    if (recipientPath.equals(senderPath)) {
                         return;
                     }
 
@@ -113,32 +111,31 @@ public class PodDeadLetterActor extends Actor {
                             break;
 
                         default:
-                            List<Class> acceptedMessages;
+                            List<Class<?>> acceptedMessages;
 
                             if (null != (acceptedMessages = pathCache.get(recipientParentPath))) {
-
-                                if (0 == acceptedMessages.size() || acceptedMessages.contains(dl.getMessage().getClass())) {
-                                    context.actorSelection(recipientParentPath).tell(
+                                // THe recipient's parent is registered with me
+                                if (acceptedMessages.isEmpty() || acceptedMessages.contains(dl.getMessage().getClass())) {
+                                    actorSelection(recipientParentPath).tell(
                                         new DeadLetterProxyMsg(nameFromPath(recipientPath), dl.getMessage(), dl.getSender()),
                                         dl.getSender()
                                     );
                                 }
                                 else // Todo: this is not rally a warning - it is doing its job. But debugging for now
-                                    log.warn(
-                                        "Unhandled msg type %s in dead letter handler to: %s from: %s msg: %s".formatted(
-                                                dl.getMessage().getClass(),
-                                                recipientPath,
-                                                senderPath,
-                                                dl
-                                        )
+                                    log.warn("Unhandled msg type {} in dead letter handler to:{} from:{} msg:{}",
+                                        dl.getMessage().getClass(),
+                                        recipientPath,
+                                        senderPath,
+                                        dl
                                     );
                             }
                             else {
-                                log.debug("Unhandled Dead letter to: %s from: %s msg: %s".formatted(
+                                log.warn("Unhandled Dead letter to:{} from:{} msg:{}. Is {} registered ?",
                                     recipientPath,
                                     senderPath,
-                                    dl
-                                ));
+                                    dl,
+                                    recipientParentPath
+                                );
                             }
                     }
                 }

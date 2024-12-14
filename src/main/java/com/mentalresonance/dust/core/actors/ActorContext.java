@@ -209,7 +209,7 @@ public class ActorContext {
                 while (((left = parts.size()) != 0) && null == ref) {
                     String lastPart = parts.remove(left - 1);
                     post.add(lastPart);
-                    ref = resolvePaths.getIfPresent(String.join("/", parts));
+                    ref = resolvePaths.getIfPresent(String.join("/", parts) + "/");
                 }
                 if (0 == left) {
                     ref = guardianActor;
@@ -217,10 +217,10 @@ public class ActorContext {
                 // So now post is a list of actor path segments and ref is the Actor which is the parent of the first of
                 // the segments. Note that post will have picked up a trailing "" from the last "/". Also the list is
                 // in reverse order to what we need ...
-
-                post.remove(post.size() - 1);
+                if (post.getLast().isEmpty())
+                    post.removeLast();
                 Collections.reverse(post);
-                // log.info("Resolving " + path +  " from " + ref);
+                log.trace("Resolving {} from {}", path, ref);
                 _ResolveActorMsg resolve = new _ResolveActorMsg(post);
                 ref.tell(resolve, null);
 
@@ -229,7 +229,11 @@ public class ActorContext {
 
                 try {
                     resolved = resolve.ref.get(10, TimeUnit.SECONDS);
-                } catch (Exception ignored) {}
+                } catch (TimeoutException e) {
+                    log.warn("Resolving {} timed out", path);
+                } catch (Exception e) {
+                    log.warn("Resolving {} got error {}", path, e.getMessage());
+                }
 
                 /*
                  * To cache or not to cache dead letters. We don't since if the Actor is (re) started
@@ -237,9 +241,12 @@ public class ActorContext {
                  * (so far) is worth it.
                  */
                 if (null == resolved) {
+                    log.trace("{} not found", path);
                     resolved = deadLetterRef(path);
-                } else
+                } else {
+                    log.trace("{} resolved", path);
                     resolvePaths.put(path, resolved);
+                }
 
                 return resolved;
             }
@@ -281,6 +288,16 @@ public class ActorContext {
      */
     public void decache(String path) {
         resolvePaths.invalidate(path);
+    }
+
+    /**
+     * Add path to cache. We need this when resolving "./...." to ensure we don't send a _ResolveMsg to
+     * the Actor doing the resolving (which would block the resolve).
+     * @param path
+     * @param ref
+     */
+    public void encache(String path, ActorRef ref) {
+        resolvePaths.put(path, ref);
     }
 
     /**

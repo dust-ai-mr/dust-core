@@ -31,7 +31,7 @@ public  class RegisterPodDeadLettersMsg implements Serializable {
     /**
      * Messages of interest
      */
-    public final List<Class> acceptedMessages = new LinkedList<>();
+    public final List<Class<?>> acceptedMessages = new LinkedList<>();
 
     /**
      * Constructor

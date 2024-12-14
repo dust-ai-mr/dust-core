@@ -150,7 +150,9 @@ public class ActorRef implements Serializable {
      */
     public boolean tell(Serializable message, ActorRef sender) {
         boolean success = true;
-        // log.info(this + "was told " + message + " by " + sender);
+
+        log.trace("Delivering {} to {} mailbox from {}", message, this, sender);
+
         try {
             SentMessage sentMessage;
 
@@ -159,6 +161,7 @@ public class ActorRef implements Serializable {
              * message in a DeadLetter message and send it off
              */
             if (isDeadLetter) {
+                log.trace("{} is dead letter mailbox", this);
                 message = new DeadLetter(message, path, sender);
             }
 
@@ -166,12 +169,13 @@ public class ActorRef implements Serializable {
 
             if (mailBox != null) { // Local
                 if (! mailBox.dead) {
-                    // log.info("Adding " + message + " to mailbox " + path + " queue presize=" + mailBox.queue.size());
+                    log.trace("Adding:{} to mailbox:{}  queue presize={}", sentMessage.message, this, mailBox.queue.size());
                     mailBox.queue.add(sentMessage);
                 }
                 else {
+                    log.trace("{} mailbox is dead .. restarted ??", this);
                     if (!PersistentActor.isInShutdown()) { // May be in shutdown but false -- need to fix this
-                        ActorRef deadLetterRef =context.getDeadLetterActor();
+                        ActorRef deadLetterRef = context.getDeadLetterActor();
                         if (deadLetterRef != null && !deadLetterRef.mailBox.dead) { // We may be globally stopping
                             deadLetterRef.tell(new DeadLetter(sentMessage.message, path, sender), null);
                         }

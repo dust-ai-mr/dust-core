@@ -129,24 +129,32 @@ public abstract class PodManagerActor extends PersistentActor {
                 }
                 case CreateChildMsg msg -> {
                     String name = msg.getName();
-                    ActorRef child = actorOf(childProps, name);
-                    watch(child);
-                    kids.put(name, true);
-                    if (null != msg.getMsg()) {
-                        child.tell(msg.getMsg(), sender);
+                    if (kids.containsKey(name)) {
+                        log.warn("{}: CreateChildMsg from {}. Child '{}' already exists.", self.path, sender, name);
                     }
-                    saveSnapshot(kids);
-                    if (null != sender) {
-                        sender.tell(new CreatedChildMsg(name), self);
+                    else {
+                        ActorRef child = actorOf(childProps, name);
+                        watch(child);
+                        kids.put(name, true);
+                        if (null != msg.getMsg()) {
+                            child.tell(msg.getMsg(), sender);
+                        }
+                        saveSnapshot(kids);
+                        if (null != sender) {
+                            sender.tell(new CreatedChildMsg(name), self);
+                        }
+                        log.trace("{} created child: {}", self.path, name);
                     }
-                    log.trace("{} created child: {}", self.path, name);
                 }
                 case ChildExceptionMsg msg -> {
-                    log.error("%s: ChildException %s".formatted(self.path, msg.getException().getMessage()));
+                    log.error("{}: ChildException {}", self.path, msg.getException().getMessage());
                     unWatch(sender);
                     kids.remove(sender.name);
                 }
                 case DeadLetterProxyMsg msg -> self.tell(new CreateChildMsg(msg.name, msg.msg), msg.sender);
+
+                // Acknowledgment of child creation - ignore
+                case CreatedChildMsg ignored -> {}
 
                 // Acknowledgement of registration with a PodDeadLetterActor - ignore
                 case RegisterPodDeadLettersMsg ignored -> {}
