@@ -508,7 +508,7 @@ public class Actor implements Runnable {
         /*
          * If I'm exiting because of a restart then don't tell parent, keep mailbox and don't call postStop()
          */
-        if (self.lifecycle != ActorRef.LC_RESTART || hardStop || stopping)
+        if (self.lifecycle != ActorRef.LC_RESTART || hardStop /* || stopping */)
         {
            watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
 
@@ -694,6 +694,35 @@ public class Actor implements Runnable {
     }
 
     /**
+     * Sends the message to target in ~millis milliseconds
+     * @param msg the message
+     * @param millis time in millis to delay
+     * @param target recipient of message
+     * @param from send as though from this Actor
+     * @return a Cancellable
+     */
+    protected Cancellable scheduleIn(Serializable msg, Long millis, ActorRef target, ActorRef from) {
+        if (null == target) {
+            log.error("Scheduling to a null target");
+            return null;
+        }
+        return new Cancellable(Thread.startVirtualThread(
+                () -> {
+                    try {
+                        Thread.sleep(millis);
+                        target.tell(msg, from);
+                    }
+                    catch (InterruptedException e) { // Cancel !!
+
+                    }
+                    catch (Throwable t) {
+                        log.warn(t.getMessage());
+                    }
+                }
+        ));
+    }
+
+    /**
      * Create a child Actor from the props under a random name.
      *
      * When this returns the mailbox for the new Actor is available and can be sent message but there is no guarantee
@@ -864,17 +893,19 @@ public class Actor implements Runnable {
                     path = String.join("/", segments) + "/" + path;
                 }
                 else if (path.startsWith("./")) {
-                    /*
-                     * We have an issue here. If my path is not in the resolver cache I will be sent a _ResolveMsg
-                     * which I cannot process because I am still handling the ActorSelection resolution,
-                     * so I put myself in the cache to make sure this does not happen
-                     */
                     String childPath = path.substring(2);
-                    context.encache(self.path, self);
                     path = self.path + childPath;
                 }
                 else
                     path = self.path + path;
+                /*
+                 * We have an issue here. If my path is not in the resolver cache I will be sent a _ResolveMsg
+                 * which I cannot process because I am still handling the ActorSelection resolution,
+                 * so I put myself in the cache to make sure this does not happen
+                 */
+                if (path.startsWith(self.path)) {
+                    context.encache(self.path, self);
+                }
             }
         }
         else

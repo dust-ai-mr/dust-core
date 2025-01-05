@@ -368,6 +368,11 @@ public class ActorContext {
             this.path = path;
             this.ref = new CompletableFuture<>();
         }
+
+        @Override
+        public String toString() {
+            return String.join("/", path);
+        }
     }
 
     /**

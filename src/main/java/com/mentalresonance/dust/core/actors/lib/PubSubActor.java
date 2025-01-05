@@ -95,6 +95,9 @@ public class PubSubActor extends Actor {
                 else {
                     if (null != registrants) {
                         registrants.remove(sender.path);
+                        if (registrants.isEmpty()) {
+                            stopSelf();
+                        }
                     }
                 }
             }

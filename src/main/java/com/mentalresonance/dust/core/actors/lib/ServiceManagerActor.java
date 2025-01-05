@@ -24,7 +24,6 @@ import com.mentalresonance.dust.core.actors.ActorBehavior;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.ChildExceptionMsg;
-import com.mentalresonance.dust.core.msgs.StartMsg;
 import com.mentalresonance.dust.core.msgs.Terminated;
 import lombok.extern.slf4j.Slf4j;
 
@@ -73,7 +72,7 @@ public class ServiceManagerActor extends Actor {
     @Override
     protected void preStart() throws Exception {
         super.preStart();
-        self.tell(new StartMsg(), self);
+        self.tell(new _StartMsg(), self);
     }
 
     /**
@@ -84,7 +83,7 @@ public class ServiceManagerActor extends Actor {
     protected ActorBehavior createBehavior() {
         return message -> {
             switch(message) {
-                case StartMsg ignored -> {
+                case _StartMsg ignored -> {
                     if (!msgQ.isEmpty() && currentWorkers < maxWorkers) {
                         LinkedList<Serializable> record = msgQ.removeFirst();
                         watch(actorOf(serviceProps)).tell(record.getFirst(), (ActorRef) record.getLast());
@@ -94,7 +93,7 @@ public class ServiceManagerActor extends Actor {
 
                 case Terminated ignored -> {
                     --currentWorkers;
-                    self.tell(new StartMsg(), self);
+                    self.tell(new _StartMsg(), self);
                 }
 
                 case ChildExceptionMsg ignored -> {} // Otherwise default will create a child for it
@@ -115,4 +114,7 @@ public class ServiceManagerActor extends Actor {
             }
         };
     }
+
+    // Don't use StartMsg() since we may be sending that to our service workers !
+    static class _StartMsg implements Serializable {}
 }

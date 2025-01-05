@@ -19,11 +19,14 @@
 
 package com.mentalresonance.dust.core.actors;
 
+import lombok.Getter;
+
 /**
  * a Cancellable is just a wrapper around a thread.
  *
  *  @author alanl
  */
+@Getter
 public class Cancellable {
 
     final Thread thread;
@@ -37,5 +40,9 @@ public class Cancellable {
     /**
      * Cancel the Cancellable by interrupting its thread
      */
-    public void cancel() { thread.interrupt(); }
+    public void cancel() {
+        try {
+            thread.interrupt();
+        } catch (Exception ignored) {}
+    }
 }
