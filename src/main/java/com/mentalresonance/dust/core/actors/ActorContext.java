@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024 Alan Littleford
+ *  Copyright 2024-2025 Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -186,7 +186,7 @@ public class ActorContext {
                 return ref;
             }
             else if (path.contains(":")) {
-                ActorRef remoteRef =  new ActorRef(path, this);
+                ActorRef remoteRef =  new ActorRef(path, this, null);
                 resolvePaths.put(path, remoteRef);
                 return remoteRef;
             }
@@ -262,7 +262,7 @@ public class ActorContext {
 
     ActorRef deadLetterRef(String path) throws ActorSelectionException, InterruptedException {
         ActorRef deadLetter = getDeadLetterActor();
-        ActorRef ref = new ActorRef(path, this);
+        ActorRef ref = new ActorRef(path, this, deadLetter.actor);
         ref.isDeadLetter = true;
         ref.thread = deadLetter.thread;
         ref.mailBox = deadLetter.mailBox;

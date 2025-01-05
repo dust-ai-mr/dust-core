@@ -1,25 +1,26 @@
+import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.msgs.PingMsg
 import com.mentalresonance.dust.core.actors.ActorSystem
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
 
 /**
- * Send a message to a nonexistent Actor. It should get logged. Delay before stopping to ensure it has
- * time to be processed
- *
+ * Get ref to a dead letter box
  * See also 'DeadletterPubSub'
  */
 @Slf4j
 class OneDeadLetter extends Specification {
 
+	public static success = false
 
 	def "Dead Letter"() {
 		when:
 			ActorSystem system = new ActorSystem("DeadLetter")
-			system.context.actorSelection('/user/nothere').tell(new PingMsg(), null)
+			ActorRef ref = system.context.actorSelection('/user/notthere')
+			success = ref.isDeadLetter()
 			system.stop()
 		then:
-			true
+			success
 	}
 
 }

@@ -11,6 +11,8 @@ import spock.lang.Specification
 @Slf4j
 class Path extends Specification {
 
+	public static success = false
+
 	static ActorSystem system
 
 	static class DummyMsg implements Serializable {
@@ -36,6 +38,9 @@ class Path extends Specification {
 			var log2 = system.context.actorSelection("/user/logger")
 			log2.tell(new DummyMsg("'From selection'"), null)
 
+			// Refs are to the same Actor so should be the same ref
+			success = log == log2
+
 			// Now kill the Logger Actor.
 			log2.tell(new PoisonPill(), null)
 			log2.waitForDeath()
@@ -53,18 +58,20 @@ class Path extends Specification {
 		when:
 			log.info "Starting path test remotely"
 			system = new ActorSystem("Path", 9099)
+			success = false
+
 			var log = system.context.actorOf(LogActor.props(), "logger")
 			log.tell(new DummyMsg("'From creation'"), null)
 
 			var log2 = system.context.actorSelection("dust://localhost:9099/Test/user/logger")
 			log2.tell(new DummyMsg("'From remote selection'"), null)
-
 			/*
 			 * Since we cannot waitForDeath() on remote refs at the moment (even though the Actor is running
 			 * locally it was started as a remote) we simply sleep a little to give things time to complete
 			 */
+			Thread.sleep(1000L)
 			system.stop()
-					then:
+		then:
 			true
 	}
 }

@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024 Alan Littleford
+ *  Copyright 2024-2025 Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ public class ActorSelection implements Serializable {
      */
     public ActorRef getRef() throws ActorSelectionException, InterruptedException {
         if (remote) {
-            return new ActorRef(path, context);
+            return new ActorRef(path, context, null);
         }
         else if (null == target) {
             target = context.actorSelection(path);

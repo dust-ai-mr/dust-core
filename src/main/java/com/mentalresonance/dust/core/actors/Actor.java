@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024 Alan Littleford
+ *  Copyright 2024-2025 Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ public class Actor implements Runnable {
      */
     protected ActorBehavior behavior;
 
-    private final HashMap<String, ActorRef> children = new HashMap<>(8);
+    protected final HashMap<String, ActorRef> children = new HashMap<>(8);
 
     // Who is watching me ?
     private final List<ActorRef> watchers = new LinkedList<>();
@@ -345,28 +345,14 @@ public class Actor implements Runnable {
                          * _ResolveActorMsg is used to resolve a path. If nothing is left then the path is me and I complete
                          * the future with my reference. If not then I look up the next segment (a child?)
                          * and if found I send the trimmed message down to it. If I can't look it up I
-                         * return null - and let the resolver replace it with a cloned dead letter actor
+                         * return null - and let the resolver replace it with a cloned dead letter actor.
+                         *
+                         * Todo: Because of blocking issues when resolver is on resolvee's path this functionality
+                         *  has been moved to the ActorRef. Leaving this error message here for now just in case
+                         *  there are still issues ...
                          */
                         case ActorContext._ResolveActorMsg res -> {
-                            log.trace("{} got resolve message {} from {}", self.path, res.path, sender);
-                            if (res.path.isEmpty()) {
-                                if (!res.ref.complete(self)) {
-                                    log.error("Resolved path " + self.path + " did not complete properly");
-                                }
-                            }
-                            else {
-                                String next = res.path.remove(0);
-                                ActorRef child = children.get(next);
-
-                                if (null == child) {
-                                    log.trace("Resolving: {} is not a child of {}", next, self.path);
-                                    res.ref.complete(null);
-                                }
-                                else {
-                                    log.trace("Forwarding resolve to {} which is  a child of {}", child, self.path);
-                                    child.tell(res, self);
-                                }
-                            }
+                            log.error("Actor {} got _ResolveActorMsg {} from {}. Resolution still broken ??", self.path, res.path, sender);
                         }
 
                         case WatchMsg ignored -> watchers.add(sender);
@@ -388,7 +374,7 @@ public class Actor implements Runnable {
                         // A child has stopped
                         case _Stopped ignored -> {
                             if (null == children.remove(sender.name))
-                                log.warn(self.path + ": child: " + sender.name + " was not in children list");
+                                log.warn(self.path + ": child: " + sender.name + " was not in children list and is stopping ...");
                             if (stopping && children.isEmpty())
                                 running = false;
                         }
@@ -758,7 +744,7 @@ public class Actor implements Runnable {
                 return exists;
             }
             Actor actor = createInstanceWithParameters(props.actorClass, props.actorArgs);
-            ActorRef ref = new ActorRef(self.path, name, context);
+            ActorRef ref = new ActorRef(self.path, name, context, actor);
 
             ref.props = props;
             ref.mailBox = new MailBox();

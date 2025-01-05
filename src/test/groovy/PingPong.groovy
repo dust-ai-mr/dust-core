@@ -12,7 +12,7 @@ import spock.lang.Specification
  */
 class PingPong extends Specification {
 
-	def "PingPonger"() {
+	def "Ping Ponger"() {
 		when:
 			ActorSystem system = new ActorSystem("PingPong")
 

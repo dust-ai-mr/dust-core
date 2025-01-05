@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024 Alan Littleford
+ *  Copyright 2024-2025 Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import com.mentalresonance.dust.core.msgs.WatchMsg;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.nustaq.net.TCPObjectSocket;
+import static com.mentalresonance.dust.core.actors.ActorContext._ResolveActorMsg;
 
 import java.io.Serializable;
 import java.net.URI;
@@ -42,6 +43,8 @@ import static com.mentalresonance.dust.core.system.ActorSystemConnectionManager.
 public class ActorRef implements Serializable {
 
     final transient ActorContext context;
+
+    final transient Actor actor;
 
     /**
      * If I am telling remotely then recipient needs to be able to find me via host + path
@@ -83,7 +86,6 @@ public class ActorRef implements Serializable {
      */
     public transient Props props;
 
-
     /**
      * The exception that caused the restart
      */
@@ -121,24 +123,26 @@ public class ActorRef implements Serializable {
      * @param path of Actor
      * @param context to use
      */
-    public ActorRef(String path, ActorContext context) {
+    public ActorRef(String path, ActorContext context, Actor actor) {
         this.path = path;
         this.context = context;
         this.host = context.hostContext;
+        this.actor = actor;
         makeAncestors();
     }
 
     /**
      * Construct ActorRef with given name and parent path in context
      * @param parentPath path to parent (who is doing the creating)
-     * @param name of constructed Actot
+     * @param name of constructed Actor
      * @param context to use
      */
-    public ActorRef(String parentPath, String name, ActorContext context) {
+    public ActorRef(String parentPath, String name, ActorContext context, Actor actor) {
         this.path = parentPath + name + "/";
         this.context = context;
         this.name = name;
         this.host = context.hostContext;
+        this.actor = actor;
         makeAncestors();
     }
 
@@ -169,8 +173,34 @@ public class ActorRef implements Serializable {
 
             if (mailBox != null) { // Local
                 if (! mailBox.dead) {
-                    log.trace("Adding:{} to mailbox:{}  queue presize={}", sentMessage.message, this, mailBox.queue.size());
-                    mailBox.queue.add(sentMessage);
+                    if (message instanceof _ResolveActorMsg) {
+                        _ResolveActorMsg res = (_ResolveActorMsg) message;
+                        log.trace("Ref {} got resolve message {} from {}", path, res.path, sender);
+                        if (res.path.isEmpty()) {
+                            if (!res.ref.complete(this)) {
+                                log.error("Resolved path " + path + " did not complete properly");
+                            }
+                        }
+                        else {
+                            String next = res.path.remove(0);
+                            try {
+                                ActorRef child = actor.children.get(next);
+
+                                if (null == child) {
+                                    log.trace("Resolving: {} is not a child of {}", next, path);
+                                    res.ref.complete(null);
+                                } else {
+                                    log.trace("Forwarding resolve to {} which is  a child of {}", child, path);
+                                    child.tell(res, this);
+                                }
+                            } catch(Exception e) {
+                                log.error("Resolution error: {}", e.getMessage());
+                            }
+                        }
+                    } else {
+                        log.trace("Adding:{} to mailbox:{}  queue presize={}", message, this, mailBox.queue.size());
+                        mailBox.queue.add(sentMessage);
+                    }
                 }
                 else {
                     log.trace("{} mailbox is dead .. restarted ??", this);

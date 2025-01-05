@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024 Alan Littleford
+ *  Copyright 2024-2025 Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ public class ActorSystem {
 
         context = new ActorContext(this);
 
-        guardianRef = new ActorRef("", "", context);
+        guardianRef = new ActorRef("", "", context,  GuardianActor.class.getDeclaredConstructor().newInstance());
         Guardian guardian = startGuardian(guardianRef);
 
         context.setGuardianActor(guardianRef);
@@ -210,14 +210,13 @@ public class ActorSystem {
             throws NoSuchMethodException, InvocationTargetException, InstantiationException,
             IllegalAccessException {
 
-        var actor = GuardianActor.class.getDeclaredConstructor().newInstance();
-
+        Actor actor = guardianRef.actor;
         ref.mailBox = new Actor.MailBox();
         ref.thread = Thread.startVirtualThread(actor);
         actor.setParent(null);
         actor.setSelf(ref);
 
-        return new Guardian(ref, actor);
+        return new Guardian(ref, (GuardianActor) actor);
     }
 
     /**

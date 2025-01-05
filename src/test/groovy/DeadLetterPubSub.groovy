@@ -56,7 +56,7 @@ class DeadLetterPubSub extends Specification {
 			ActorRef subscriberRef = system.context.actorOf(Subscriber.props(), "subscriber")
 			Thread.sleep(500L)
 			// Now send a message to a non-existent Actor
-			system.context.actorSelection('/user/nothere').tell(new PingMsg(), null)
+			system.context.actorSelection('/user/notthere').tell(new PingMsg(), null)
 			// After the subscriber receives the dead letter PingMsg  it will stop
 			subscriberRef.waitForDeath()
 			system.stop()

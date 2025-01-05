@@ -1,6 +1,6 @@
 import com.mentalresonance.dust.core.actors.Actor
+import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
-import com.mentalresonance.dust.core.actors.PoisonPill
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.LogActor
 import groovy.util.logging.Slf4j
@@ -26,47 +26,14 @@ import spock.lang.Specification
  */
 
 @Slf4j
-class ChildResolution extends Specification {
+class GetSystemActors extends Specification {
 
 	public static success = false
 
-	@Slf4j
-	static class Child0 extends Actor {
-
-		static Props props() {
-			Props.create(Child0)
-		}
-
-		@Override
-		void preStart() {
-			actorOf(Child.props(), 'child')
-			log.info "Started child"
-			actorSelection("./child/logger").tell("Log me", self)
-			success = true
-		}
-	}
-
-	@Slf4j
-	static class Child extends Actor {
-
-		static Props props() {
-			Props.create(Child)
-		}
-
-		@Override
-		void preStart() {
-			actorOf(LogActor.props(), 'logger')
-			log.info "Started logger"
-		}
-	}
-
-	def "Child Resolution"() {
+	def "Get System Actors"() {
 		when:
-			log.info "Starting path test locally"
-			ActorSystem system = new ActorSystem("Test")
-
-			system.context.actorOf(Child0.props(), 'child0')
-			Thread.sleep(500L)
+			ActorSystem system = new ActorSystem("Get System Actors")
+			success = system.context.getDeadLetterActor() && system.context.getUserActor()
 			system.stop()
 		then:
 			success
