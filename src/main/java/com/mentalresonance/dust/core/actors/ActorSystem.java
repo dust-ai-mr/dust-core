@@ -66,6 +66,8 @@ public class ActorSystem {
 
     CompletableFuture<Boolean> haveStopped = null;
 
+    public static boolean isStopping = false;
+
     /**
      * Optional runnable to be run after ActorSystem shuts down
      */
@@ -229,6 +231,8 @@ public class ActorSystem {
      * false then they probably will delete their state
      */
     public void stop(boolean inShutdown) {
+
+        isStopping = true;
 
         PersistentActor.setInShutdown(inShutdown);
         context.stop(guardianRef);

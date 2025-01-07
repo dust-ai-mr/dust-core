@@ -36,8 +36,8 @@ class Create extends Specification {
 		when:
 			time = System.currentTimeMillis()
 			// Now create 5 million actors in 500 batches
-			log.info "Starting 500 * 10000"
-			system.context.actorOf(CreatorMonitorActor.props(500, 10000)).waitForDeath()
+			log.info "Starting 1000 * 5000"
+			system.context.actorOf(CreatorMonitorActor.props(1000, 5000)).waitForDeath()
 			time = System.currentTimeMillis() - time
 			log.info "5,000,000 done as 500 batches of 10000.  ${ 5000000 / (time / 1000.0)} actors created / second"
 			system.stop()

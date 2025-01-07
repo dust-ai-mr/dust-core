@@ -107,8 +107,9 @@ public class Actor implements Runnable {
 
     /**
      * While running is true I process messages
+     * Stopping flag indicates I am in the shutdown procedure
      */
-    boolean running, stopping = false, hardStop = false;
+    boolean running, stopping = false;
 
     /**
      * Constructor. <b>This should not be called directly</b> rather rely on it being called
@@ -266,18 +267,28 @@ public class Actor implements Runnable {
     {
         try {
             switch (self.lifecycle) {
+                case ActorRef.LC_START -> {
+                    preStart();
+                    running = true;
+                }
                 case ActorRef.LC_RECOVERED -> {
                     ((PersistentActor)this).postRecovery();
                     preStart();
                     running = true;
                 }
-                case ActorRef.LC_START -> {
-                    preStart();
-                    running = true;
+                /*
+                 This is unexpected but possible - actorOf create the Actor and assigns the virtual thread
+                 to the mailbox so run() might, but in the meantime we have stopped the newly created Actor
+                */
+                case ActorRef.LC_STOP -> {
+                    running = false;
                 }
                 case ActorRef.LC_RESTART -> {
                     preRestart(self.restartCause);
-                    self.lifecycle = ActorRef.LC_RESTART;
+                    running = true;
+                }
+                case ActorRef.LC_RESUME -> {
+                    onResume();
                     running = true;
                 }
                 default -> {
@@ -312,14 +323,21 @@ public class Actor implements Runnable {
             }
             /*
              * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
-             * This is a hard stop.
-             * running if my lifecycle is LC_START otherwise there is an ALL_FOR_ONE supervision going on.
-             * In this case my parent will have set my lifecycle to tell me what to do:
+             * This is a hard stop. So I start shutting down but keep my message loop running as this is how I determine when
+             * all my children are dead.
              */
             catch (InterruptedException x) {
                 log.trace("{} interrupted while processing {}", self.path, sentMessage);
-                hardStop = true;
-                startStopping();
+                if (self.lifecycle == ActorRef.LC_INTERRUPT_RESTART) {
+                    self.lifecycle = ActorRef.LC_RESTART;
+                    running = false;
+                } else if (self.lifecycle == ActorRef.LC_INTERRUPT_RESUME) {
+                    self.lifecycle = ActorRef.LC_RESUME;
+                    running = false;
+                } else {
+                    self.lifecycle = ActorRef.LC_STOP;
+                    startStopping();
+                }
                 continue;
             }
 
@@ -341,18 +359,12 @@ public class Actor implements Runnable {
 
                     switch (sentMsg)
                     {
-                        /*
-                         * _ResolveActorMsg is used to resolve a path. If nothing is left then the path is me and I complete
-                         * the future with my reference. If not then I look up the next segment (a child?)
-                         * and if found I send the trimmed message down to it. If I can't look it up I
-                         * return null - and let the resolver replace it with a cloned dead letter actor.
-                         *
-                         * Todo: Because of blocking issues when resolver is on resolvee's path this functionality
-                         *  has been moved to the ActorRef. Leaving this error message here for now just in case
-                         *  there are still issues ...
-                         */
-                        case ActorContext._ResolveActorMsg res -> {
-                            log.error("Actor {} got _ResolveActorMsg {} from {}. Resolution still broken ??", self.path, res.path, sender);
+                        // A child has stopped
+                        case _Stopped ignored -> {
+                            if (null == children.remove(sender.name))
+                                log.warn(self.path + ": child: " + sender.name + " was not in children list and is stopping ...");
+                            if (stopping && children.isEmpty())
+                                running = false;
                         }
 
                         case WatchMsg ignored -> watchers.add(sender);
@@ -360,7 +372,8 @@ public class Actor implements Runnable {
                         case UnWatchMsg ignored ->  watchers.remove(sender);
 
                         case PoisonPill ignored -> {
-                            hardStop = true;
+                            // We always stop no matter what supervision tells us
+                            self.lifecycle = ActorRef.LC_STOP;
                             startStopping();
                         }
 
@@ -370,14 +383,6 @@ public class Actor implements Runnable {
                          * Support actorOf in ActorContext.
                          */
                         case ActorContext._CreateChildMsg msg -> msg.ref.complete(actorOf(msg.props, msg.name));
-
-                        // A child has stopped
-                        case _Stopped ignored -> {
-                            if (null == children.remove(sender.name))
-                                log.warn(self.path + ": child: " + sender.name + " was not in children list and is stopping ...");
-                            if (stopping && children.isEmpty())
-                                running = false;
-                        }
 
                         // If I am a request do it - if a Response to my request of another Actor pass it to my behavior
                         case GetChildrenMsg msg -> {
@@ -413,8 +418,14 @@ public class Actor implements Runnable {
                             for(ActorRef child : flock) {
                                 child.restartCause = msg.thrown;
                                 child.lifecycle = supervisionStrategy.strategy(child, msg.thrown).getStrategy();
+
+                                if (child.lifecycle == ActorRef.LC_RESUME)
+                                    child.lifecycle = ActorRef.LC_INTERRUPT_RESUME;
+                                else if (child.lifecycle == ActorRef.LC_RESTART)
+                                    child.lifecycle = ActorRef.LC_INTERRUPT_RESTART;
+
                                 /*
-                                 * If the child is the original thrower it will be sat waiting on the lock,
+                                 * If the child is the original thrower it will be sat waiting on the lock
                                  * if not we can interrupt it anyway having set its lifecycle state
                                  */
                                 child.thread.interrupt();
@@ -422,15 +433,29 @@ public class Actor implements Runnable {
                                  * Restarting is tricky - we want the sender ref to still be valid since it is held by many
                                  * other Actors, so we need to just 'adjust' it to match the new conditions
                                  */
-                                if (child.lifecycle == ActorRef.LC_RESTART) {
+                                if (child.lifecycle == ActorRef.LC_INTERRUPT_RESTART) {
+                                    child.thread.join();
                                     children.put(child.name,  restart(child));
                                 }
-                                self.tell(new ChildExceptionMsg(sender, msg.thrown), self);
                             }
+                            tellSelf(new ChildExceptionMsg(sender, msg.thrown));
                         }
-                        //
+
                         case _ChildProxyMsg msg -> children.values().forEach(child -> child.tell(msg.message, sender));
-                        //
+                        /*
+                         * _ResolveActorMsg is used to resolve a path. If nothing is left then the path is me and I complete
+                         * the future with my reference. If not then I look up the next segment (a child?)
+                         * and if found I send the trimmed message down to it. If I can't look it up I
+                         * return null - and let the resolver replace it with a cloned dead letter actor.
+                         *
+                         * Todo: Because of blocking issues when resolver is on resolvee's path this functionality
+                         *  has been moved to the ActorRef. Leaving this error message here for now just in case
+                         *  there are still issues ...
+                         */
+                        case ActorContext._ResolveActorMsg res -> {
+                            log.error("Actor {} got _ResolveActorMsg {} from {}. Resolution still broken ??", self.path, res.path, sender);
+                        }
+
                         default -> {
                             if (null != behavior) {
                                 behavior.onMessage(sentMessage.message);
@@ -465,6 +490,13 @@ public class Actor implements Runnable {
                      */
                     catch (InterruptedException e)
                     {
+                        if (self.lifecycle == ActorRef.LC_INTERRUPT_RESTART) {
+                            self.lifecycle = ActorRef.LC_RESTART;
+                        } else if (self.lifecycle == ActorRef.LC_INTERRUPT_RESUME) {
+                            self.lifecycle = ActorRef.LC_RESUME;
+                        }
+                        log.info("Lifecycle of {} is {}", self.path, self.lifecycle);
+
                         switch (self.lifecycle)
                         {
                             case ActorRef.LC_STOP -> startStopping();
@@ -486,7 +518,15 @@ public class Actor implements Runnable {
                 }
             }
         }
+        /*
+         * If I stopped because of an all-for-one resume and i wasn't the offender
+         * then simply run again
+         */
 
+        if (self.lifecycle == ActorRef.LC_RESUME) {
+            self.thread = Thread.startVirtualThread(this);
+            return;
+        }
         /*
          * We have stopped - flush any cached reference in context
          */
@@ -494,11 +534,11 @@ public class Actor implements Runnable {
         /*
          * If I'm exiting because of a restart then don't tell parent, keep mailbox and don't call postStop()
          */
-        if (self.lifecycle != ActorRef.LC_RESTART || hardStop /* || stopping */)
+        if (self.lifecycle != ActorRef.LC_RESTART)
         {
-           watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
+            watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
 
-           try {
+            try {
                 postStop();
                 if (null != deadMansHandle)
                     deadMansHandle.cancel();
@@ -512,26 +552,26 @@ public class Actor implements Runnable {
             if (null != parent) {
                 parent.tell(new _Stopped(), self);
             }
-        } else {
-            running = true; // Parent will restart() us
-            stopping = false; // In case of restart
         }
         // log.trace("{} stopped", self.path);
+
     }
 
     /**
      * If necessary kill our children waiting until they are all stopped.
+     * As each child stops we will get a _Stopped
      * If no children simply decide if we are going to stop of not.
      */
     private void startStopping() {
-        // log.trace("{} stopping, Has {} children", self.path, children.size());
+        log.trace("{} stopping, Has {} children", self.path, children.size());
         if (! children.isEmpty()) {
             stopping = true;
-            children.forEach((name, child) -> context.stop(child));
-        }
-        else {
+            children.forEach((name, child) -> {
+                child.lifecycle = ActorRef.LC_STOP;
+                context.stop(child);
+            });
+        } else
             running = false;
-        }
     }
 
     /**
@@ -753,11 +793,11 @@ public class Actor implements Runnable {
             actor.parent = self;
             actor.grandParent = parent;
             actor.self = ref;
-            children.put(name, ref);
-
             ref.thread = Thread.startVirtualThread(actor);
 
-            return actor.self;
+            children.put(name, ref);
+
+            return ref;
         }
         catch (Exception e) {
             log.error("Could not create Actor {} error: {}", props.actorClass, e.getMessage());
@@ -903,8 +943,8 @@ public class Actor implements Runnable {
     }
 
     /**
-     * Restart the Actor at ref. Note this means keeping the ref almost as was. We update the lifecycle and
-     * create a thread for the restart but that is it.
+     * Restart the Actor at ref. We create a instance of the Actor
+     * and patch up its context and patch up its old Ref.
      *
      * @param ref Actor to be restarted
      * @return original ref
@@ -920,6 +960,7 @@ public class Actor implements Runnable {
             actor.grandParent = parent;
             actor.self = ref;
 
+            ref.actor = actor;
             ref.lifecycle = ActorRef.LC_RESTART;
             ref.thread = Thread.startVirtualThread(actor);
             // log.trace("{} restarted ${}", self.path, ref);

@@ -12,6 +12,7 @@ import static org.codehaus.groovy.runtime.DefaultGroovyMethods.println;
 /**
  * Create a fixed number of null Actors as children then kill myself - used in Test
  */
+@Slf4j
 public class CreatorActor extends Actor {
 
     int limit;

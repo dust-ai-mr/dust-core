@@ -20,6 +20,8 @@ class AllForOneSupervision extends Specification {
 
 	ActorSystem system = new ActorSystem("AllForOneSupervision")
 
+	public static boolean stopped = false, restarted = false, resumed = false
+
 	@Slf4j
 	/*
 	  This Actor will create two Actors but send one a message telling it to throw an exception. It then
@@ -51,8 +53,8 @@ class AllForOneSupervision extends Specification {
 				{
 					case ChildExceptionMsg -> {
 						ChildExceptionMsg msg = (ChildExceptionMsg) messsage
-						log.info "${msg.child} threw exception. Supervision=$supervisor  Will stop in 1 second"
-						scheduleIn(new PoisonPill(), 1000)
+						log.info "${msg.child} threw exception. Supervision=$supervisor  Will stop in 5 second"
+						scheduleIn(new PoisonPill(), 5000)
 					}
 					default -> super.createBehavior().onMessage(messsage)
 				}
@@ -74,16 +76,20 @@ class AllForOneSupervision extends Specification {
 
 		@Override
 		void postStop() {
+			if (! ActorSystem.isStopping)
+				stopped = true
 			log.info "${self.path} stopped"
 		}
 
 		@Override
 		void preRestart(Throwable t) {
+			restarted = true
 			log.info "${self.path} restarted because of '$t'"
 		}
 
 		@Override
 		void onResume() {
+			resumed = true
 			log.info "${self.path} resumed"
 		}
 
@@ -107,24 +113,37 @@ class AllForOneSupervision extends Specification {
 		when:
 			log.info "Starting 'Stop' strategy"
 			system.context.actorOf( Supervisor.props(SS_STOP, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
+			system.stop()
+			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			true
+			! resumed
+			! restarted
+			stopped
 	}
 
 	def "Resume Supervision"() {
 		when:
 			log.info "Starting 'Resume' strategy"
+			stopped = false; restarted = false; resumed = false
 			system.context.actorOf( Supervisor.props(SS_RESUME, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
+			system.stop()
+			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			true
+			! stopped
+			! restarted
+			resumed
 	}
 
 	def "Restart Supervision"() {
 		when:
 			log.info "Starting 'Restart' strategy"
+			stopped = false; restarted = false; resumed = false
 			system.context.actorOf( Supervisor.props(SS_RESTART, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
-					then:
-			true
+			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
+		then:
+			! stopped
+			! resumed
+			restarted
 	}
 }

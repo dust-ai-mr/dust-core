@@ -28,8 +28,8 @@ dependencies {
     compileOnly 'org.projectlombok:lombok:1.18.30'
     compileOnly 'org.slf4j:slf4j-simple:2.0.7'
 
-    api "com.github.ben-manes.caffeine:caffeine:3.1.8"
-    api "de.ruedigermoeller:fst:3.0.3"
+    implementation "com.github.ben-manes.caffeine:caffeine:3.1.8"
+    implementation "de.ruedigermoeller:fst:3.0.3"
 
     implementation 'com.google.code.gson:gson:2.10.1'
 }
@@ -43,7 +43,7 @@ publishing {
 }
 
 def testArgs = [
-    '-Xmx20g',
+    '-Xmx24g',
     '--add-opens=java.base/java.lang=ALL-UNNAMED',
     '--add-opens=java.base/java.math=ALL-UNNAMED',
     '--add-opens=java.base/java.util=ALL-UNNAMED',

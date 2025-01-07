@@ -44,7 +44,7 @@ public class ActorRef implements Serializable {
 
     final transient ActorContext context;
 
-    final transient Actor actor;
+    transient Actor actor;
 
     /**
      * If I am telling remotely then recipient needs to be able to find me via host + path
@@ -117,6 +117,10 @@ public class ActorRef implements Serializable {
      * I have completed recovery
      */
     public final static int LC_RECOVERED = 4;
+
+    public final static int LC_INTERRUPT_RESUME = 5;
+
+    public final static int LC_INTERRUPT_RESTART = 6;
 
     /**
      * Construct ActorRef in the context to Actor at path
