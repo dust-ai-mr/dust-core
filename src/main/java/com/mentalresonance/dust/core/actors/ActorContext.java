@@ -221,14 +221,12 @@ public class ActorContext {
                     post.removeLast();
                 Collections.reverse(post);
                 log.trace("Resolving {} from {}", path, ref);
-                _ResolveActorMsg resolve = new _ResolveActorMsg(post);
-                ref.tell(resolve, null);
 
                 // Crazy long timeout to handle startup issues
                 ActorRef resolved = null;
 
                 try {
-                    resolved = resolve.ref.get(10, TimeUnit.SECONDS);
+                    resolved = ref.resolve(post).get(10, TimeUnit.SECONDS);
                 } catch (TimeoutException e) {
                     log.warn("Resolving {} timed out", path);
                 } catch (Exception e) {
@@ -352,26 +350,6 @@ public class ActorContext {
         catch (Exception e) {
             log.error(e.getMessage());
             throw new ActorInstantiationException();
-        }
-    }
-
-    /**
-     * A message sent down a path from a context.actorSelection() call to get the ActorRef for the named Actor.
-     * At each stage the Actor looks to see if the path references him in which case he completes the ref,
-     * otherwise he finds his child the path references and passes it on.
-     */
-    static class _ResolveActorMsg implements Serializable {
-        final List<String> path;
-        final CompletableFuture<ActorRef> ref;
-
-        _ResolveActorMsg(List<String> path) {
-            this.path = path;
-            this.ref = new CompletableFuture<>();
-        }
-
-        @Override
-        public String toString() {
-            return String.join("/", path);
         }
     }
 

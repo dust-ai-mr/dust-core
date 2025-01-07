@@ -15,29 +15,18 @@ import spock.lang.Specification
  */
 class RemotePingPong extends Specification {
 
-
 	def "Remote Ping Ponger"() {
 		when:
 			ActorSystem system1 = new ActorSystem("RemotePingPong", 9098)
 			ActorSystem system2 = new ActorSystem("RemotePingPong2", 9099)
-			log.info("Starting PingPong Warmup")
 
-			system1.context.actorOf(PingActor.props(100000), 'ping2')
-			system2.context.actorOf(PingActor.props(100000), 'pong2')
-			// Give remote Actors time to come up
-			Thread.sleep(1000L)
+			ActorRef ping, pong
 
-			ActorRef ping = system1.context.actorSelection("dust://localhost:9098/RemotePingPong/user/ping2")
-			ActorRef pong = system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong2")
-			ping.tell(new PingMsg(), pong)
-			sleep(10000L) // Adjust ???
-
-			log.info "Warmed up - starting ping pong"
 			system1.context.actorOf(PingActor.props(500000), 'ping3')
 			system2.context.actorOf(PingActor.props(500000), 'pong3')
 			// Give remote Actors time to come up
-			Thread.sleep(1000L
-			)
+			Thread.sleep(1000L)
+
 			ping = system1.context.actorSelection("dust://localhost:9098/RemotePingPong/user/ping3")
 			pong = system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong3")
 			ping.tell(new PingMsg(), pong)

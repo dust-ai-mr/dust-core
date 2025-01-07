@@ -442,19 +442,6 @@ public class Actor implements Runnable {
                         }
 
                         case _ChildProxyMsg msg -> children.values().forEach(child -> child.tell(msg.message, sender));
-                        /*
-                         * _ResolveActorMsg is used to resolve a path. If nothing is left then the path is me and I complete
-                         * the future with my reference. If not then I look up the next segment (a child?)
-                         * and if found I send the trimmed message down to it. If I can't look it up I
-                         * return null - and let the resolver replace it with a cloned dead letter actor.
-                         *
-                         * Todo: Because of blocking issues when resolver is on resolvee's path this functionality
-                         *  has been moved to the ActorRef. Leaving this error message here for now just in case
-                         *  there are still issues ...
-                         */
-                        case ActorContext._ResolveActorMsg res -> {
-                            log.error("Actor {} got _ResolveActorMsg {} from {}. Resolution still broken ??", self.path, res.path, sender);
-                        }
 
                         default -> {
                             if (null != behavior) {
@@ -925,9 +912,7 @@ public class Actor implements Runnable {
                 else
                     path = self.path + path;
                 /*
-                 * We have an issue here. If my path is not in the resolver cache I will be sent a _ResolveMsg
-                 * which I cannot process because I am still handling the ActorSelection resolution,
-                 * so I put myself in the cache to make sure this does not happen
+                 * If I'm on the path then make sure I'm in the ref cache so resolution need not go past me
                  */
                 if (path.startsWith(self.path)) {
                     context.encache(self.path, self);

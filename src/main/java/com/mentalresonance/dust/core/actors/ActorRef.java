@@ -25,10 +25,10 @@ import com.mentalresonance.dust.core.msgs.WatchMsg;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.nustaq.net.TCPObjectSocket;
-import static com.mentalresonance.dust.core.actors.ActorContext._ResolveActorMsg;
-
 import java.io.Serializable;
 import java.net.URI;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static com.mentalresonance.dust.core.system.ActorSystemConnectionManager.WrappedTCPObjectSocket;
 
@@ -117,9 +117,13 @@ public class ActorRef implements Serializable {
      * I have completed recovery
      */
     public final static int LC_RECOVERED = 4;
-
+    /**
+     * Will convert to a LC_RESUME on interrupt handling
+     */
     public final static int LC_INTERRUPT_RESUME = 5;
-
+    /**
+     * Will convert to a LC_RESTART on interrupt handling
+     */
     public final static int LC_INTERRUPT_RESTART = 6;
 
     /**
@@ -159,7 +163,7 @@ public class ActorRef implements Serializable {
     public boolean tell(Serializable message, ActorRef sender) {
         boolean success = true;
 
-        log.trace("Delivering {} to {} mailbox from {}", message, this, sender);
+        // log.trace("Delivering {} to {} mailbox from {}", message, this, sender);
 
         try {
             SentMessage sentMessage;
@@ -177,34 +181,8 @@ public class ActorRef implements Serializable {
 
             if (mailBox != null) { // Local
                 if (! mailBox.dead) {
-                    if (message instanceof _ResolveActorMsg) {
-                        _ResolveActorMsg res = (_ResolveActorMsg) message;
-                        log.trace("Ref {} got resolve message {} from {}", path, res.path, sender);
-                        if (res.path.isEmpty()) {
-                            if (!res.ref.complete(this)) {
-                                log.error("Resolved path " + path + " did not complete properly");
-                            }
-                        }
-                        else {
-                            String next = res.path.remove(0);
-                            try {
-                                ActorRef child = actor.children.get(next);
-
-                                if (null == child) {
-                                    log.trace("Resolving: {} is not a child of {}", next, path);
-                                    res.ref.complete(null);
-                                } else {
-                                    log.trace("Forwarding resolve to {} which is  a child of {}", child, path);
-                                    child.tell(res, this);
-                                }
-                            } catch(Exception e) {
-                                log.error("Resolution error: {}", e.getMessage());
-                            }
-                        }
-                    } else {
-                        log.trace("Adding:{} to mailbox:{}  queue presize={}", message, this, mailBox.queue.size());
-                        mailBox.queue.add(sentMessage);
-                    }
+                    // log.trace("Adding:{} to mailbox:{}  queue presize={}", message, this, mailBox.queue.size());
+                    mailBox.queue.add(sentMessage);
                 }
                 else {
                     log.trace("{} mailbox is dead .. restarted ??", this);
@@ -247,6 +225,43 @@ public class ActorRef implements Serializable {
             success = false;
         }
         return success;
+    }
+
+    /**
+     * Turn the absolute (reversed) path to an Actor to a Completable Future which contains
+     * the corresponding ActorRef
+     * @param path reverse path segments to
+     * @return Completable future of corresponding Actor ref
+     */
+    protected CompletableFuture<ActorRef> resolve(List<String> path) {
+        CompletableFuture<ActorRef> ref = new CompletableFuture<>();
+        resolve(path, ref);
+        return ref;
+    }
+
+    private void resolve(List<String> path, CompletableFuture<ActorRef> ref) {
+        // log.trace("Ref {} got resolve message {}", this.path, path);
+        if (path.isEmpty()) {
+            if (!ref.complete(this)) {
+                log.error("Resolved path " + path + " did not complete properly");
+            }
+        }
+        else {
+            String next = path.removeFirst();
+            try {
+                ActorRef child = actor.children.get(next);
+
+                if (null == child) {
+                    // log.trace("Resolving: {} is not a child of {}", next, path);
+                    ref.complete(null);
+                } else {
+                    // log.trace("Forwarding resolve to {} which is  a child of {}", child, path);
+                    child.resolve(path, ref);
+                }
+            } catch(Exception e) {
+                log.error("Resolution error: {}", e.getMessage());
+            }
+        }
     }
 
     /**
