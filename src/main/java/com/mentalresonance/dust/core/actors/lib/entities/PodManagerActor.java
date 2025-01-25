@@ -39,7 +39,7 @@ import java.util.Objects;
  *  @author alanl
  */
 @Slf4j
-public abstract class PodManagerActor extends PersistentActor {
+public class PodManagerActor extends PersistentActor {
     /**
      * Common Props for children
      */

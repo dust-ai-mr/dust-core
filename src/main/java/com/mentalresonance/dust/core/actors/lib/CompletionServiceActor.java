@@ -39,19 +39,38 @@ import java.util.concurrent.CompletableFuture;
 public class CompletionServiceActor extends Actor {
 
     CompletableFuture<Object> future;
+    Long maxTime;
 
     /**
      * Construct Actor's Props
      * @return the Props
      */
     public static Props props() {
-        return Props.create(CompletionServiceActor.class);
+        return Props.create(CompletionServiceActor.class, 30000L);
+    }
+
+    public static Props props(Long maxTime) {
+        return Props.create(CompletionServiceActor.class, maxTime);
     }
 
     /**
      * Constructor
      */
-    public CompletionServiceActor() {}
+    public CompletionServiceActor(Long maxTime) {
+        this.maxTime = maxTime;
+    }
+
+    @Override
+    protected void preStart() {
+        dieIn(maxTime);
+    }
+
+    @Override
+    protected void dying() {
+        future.complete(null);
+        super.dying();
+    }
+
     /**
      * Default behavior
      * @return {@link ActorBehavior}

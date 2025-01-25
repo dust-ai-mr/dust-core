@@ -26,6 +26,7 @@ import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.PubSubMsg;
 import com.mentalresonance.dust.core.msgs.Terminated;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
@@ -134,10 +135,11 @@ public class PubSubActor extends Actor {
         ActorRef sender;
 
         /**
-         * Subscribed message
+         * Subscribed message - we allow this to be overwritten, e.g. when we wish to publish
+         * a clone of this message to each subscriber
          */
         @Getter
-        final
+        @Setter
         Serializable msg;
         /**
          * Subscribers

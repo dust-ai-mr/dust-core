@@ -77,6 +77,12 @@ public class Actor implements Runnable {
     protected ActorRef sender;
 
     /**
+     * If set to true dump debug information on serious errors
+     */
+    @Setter
+    private static boolean debug = false;
+
+    /**
      * Currently active behavior.
      */
     protected ActorBehavior behavior;
@@ -319,7 +325,7 @@ public class Actor implements Runnable {
             try {
                 sentMessage = self.mailBox.queue.take();
                 sender = sentMessage.sender;
-                log.trace("{} got message {}", self.path, sentMessage.message);
+                log.trace("{} got message {} from {}", self.path, sentMessage.message, sender);
             }
             /*
              * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
@@ -359,7 +365,9 @@ public class Actor implements Runnable {
 
                     switch (sentMsg)
                     {
-                        // A child has stopped
+                        /*
+                            A child has stopped. If I am stopping and that was my final child then I can stop now.
+                         */
                         case _Stopped ignored -> {
                             if (null == children.remove(sender.name))
                                 log.warn(self.path + ": child: " + sender.name + " was not in children list and is stopping ...");
@@ -431,11 +439,14 @@ public class Actor implements Runnable {
                                 child.thread.interrupt();
                                 /*
                                  * Restarting is tricky - we want the sender ref to still be valid since it is held by many
-                                 * other Actors, so we need to just 'adjust' it to match the new conditions
+                                 * other Actors, so we need to just 'adjust' it to match the new conditions.
+                                 *
+                                 * Note: there is a race condition here and my child may have already fallen off its
+                                 * LOCK (via the interrupt above) and set its lifecycle to LC_RESTART so check for both
                                  */
-                                if (child.lifecycle == ActorRef.LC_INTERRUPT_RESTART) {
-                                    child.thread.join();
-                                    children.put(child.name,  restart(child));
+                                if (child.lifecycle == ActorRef.LC_INTERRUPT_RESTART || child.lifecycle == ActorRef.LC_RESTART) {
+                                    child.thread.join(); // Wait for child to stop
+                                    children.put(child.name,  restart(child)); // Restart it and make it my child
                                 }
                             }
                             tellSelf(new ChildExceptionMsg(sender, msg.thrown));
@@ -461,9 +472,12 @@ public class Actor implements Runnable {
             catch (Throwable t)
             {
                 try { // Sometimes toString()ing the message can throw an Exception !!
-                    log.info(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
-                } catch (Exception e) {
-                    log.info(self.path + ": Exception when processing un-displayable message: " + t.getMessage());
+                    log.error(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
+                    if (debug) t.printStackTrace();
+                }
+                catch (Exception e) {
+                    log.error(self.path + ": Exception when processing un-displayable message: " + t.getMessage());
+                    if (debug) t.printStackTrace();
                 }
                 if (null != parent) {
                     parent.tell(new _Throwable(t), self);
@@ -504,7 +518,8 @@ public class Actor implements Runnable {
                     }
                 }
             }
-        }
+        } // End of running
+
         /*
          * If I stopped because of an all-for-one resume and i wasn't the offender
          * then simply run again
@@ -540,8 +555,8 @@ public class Actor implements Runnable {
                 parent.tell(new _Stopped(), self);
             }
         }
+        cancelDeadMansHandle();
         // log.trace("{} stopped", self.path);
-
     }
 
     /**
@@ -928,7 +943,7 @@ public class Actor implements Runnable {
     }
 
     /**
-     * Restart the Actor at ref. We create a instance of the Actor
+     * Restart the Actor at ref. We create a new instance of the Actor
      * and patch up its context and patch up its old Ref.
      *
      * @param ref Actor to be restarted

@@ -72,7 +72,7 @@ public class ServiceManagerActor extends Actor {
     @Override
     protected void preStart() throws Exception {
         super.preStart();
-        self.tell(new _StartMsg(), self);
+        self.tell(new _ServiceManagerPumpMsg(), self);
     }
 
     /**
@@ -83,17 +83,19 @@ public class ServiceManagerActor extends Actor {
     protected ActorBehavior createBehavior() {
         return message -> {
             switch(message) {
-                case _StartMsg ignored -> {
+                case _ServiceManagerPumpMsg ignored -> {
                     if (!msgQ.isEmpty() && currentWorkers < maxWorkers) {
                         LinkedList<Serializable> record = msgQ.removeFirst();
                         watch(actorOf(serviceProps)).tell(record.getFirst(), (ActorRef) record.getLast());
                         ++currentWorkers;
+                        log.trace("ServiceManager {} has {} workers. Max={}", self.path, currentWorkers, maxWorkers);
                     }
                 }
 
                 case Terminated ignored -> {
                     --currentWorkers;
-                    self.tell(new _StartMsg(), self);
+                    log.trace("ServiceManager {} has {} workers. Max={}", self.path, currentWorkers, maxWorkers);
+                    self.tell(new _ServiceManagerPumpMsg(), self);
                 }
 
                 case ChildExceptionMsg ignored -> {} // Otherwise default will create a child for it
@@ -116,5 +118,5 @@ public class ServiceManagerActor extends Actor {
     }
 
     // Don't use StartMsg() since we may be sending that to our service workers !
-    static class _StartMsg implements Serializable {}
+    static class _ServiceManagerPumpMsg implements Serializable {}
 }
