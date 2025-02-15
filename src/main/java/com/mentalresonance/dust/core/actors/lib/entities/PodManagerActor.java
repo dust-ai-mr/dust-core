@@ -50,6 +50,17 @@ public class PodManagerActor extends PersistentActor {
     public HashMap<String, Boolean> kids;
 
     /**
+     * Usually if we created a child on demand we reply to the sender with a CreatedChildMsg.
+     * This breaks if the child is a service Actor (say being completed) and the idea is the service Actor
+     * responds to the sender directly. There is now a race condition between the service Actor replying and the
+     * PodManager replying. If this is a completion the first one wins, and so the other end of the Completion may get
+     * a CreatedChildMsg rather than what they were expecting.
+     *
+     * The default is to send the CreatedChildMsg, but this flag enables us to turn off that behavior.
+     */
+    protected boolean notifyCreatedChild;
+
+    /**
      * ref to PodDeadLetterActor
      */
     protected final ActorRef podDeadLetterRef;
@@ -60,7 +71,7 @@ public class PodManagerActor extends PersistentActor {
      * @return {@link Props}
      */
     public static Props props(Props childProps) {
-        return Props.create(PodManagerActor.class, childProps, null);
+        return Props.create(PodManagerActor.class, childProps, null, true);
     }
 
     /**
@@ -71,7 +82,30 @@ public class PodManagerActor extends PersistentActor {
      * @return {@link Props}
      */
     public static Props props(Props childProps, ActorRef podDeadLetterRef) {
-        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef);
+        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef, true);
+    }
+
+    /**
+     * Create PodManager but register with pre-existing PodDeadLetterActor so I can automatically
+     * create children on demand (a message is being sent to them).
+     * @param childProps props defining child to be created
+     * @param podDeadLetterRef ref to {@link PodDeadLetterActor}
+     * @return {@link Props}
+     */
+    public static Props props(Props childProps, ActorRef podDeadLetterRef, boolean notifyCreatedChild) {
+        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef, notifyCreatedChild);
+    }
+
+    /**
+     * Constructor
+     * @param childProps props defining child to be created
+     * @param podDeadLetterRef ref to {@link PodDeadLetterActor}
+     * @param notifyCreatedChild if true notify sender of message which created a child a CreatedChildMsg, else don't
+     */
+    public PodManagerActor(Props childProps, ActorRef podDeadLetterRef, boolean notifyCreatedChild) {
+        this.childProps = childProps;
+        this.podDeadLetterRef = podDeadLetterRef;
+        this.notifyCreatedChild = notifyCreatedChild;
     }
 
     /**
@@ -82,6 +116,7 @@ public class PodManagerActor extends PersistentActor {
     public PodManagerActor(Props childProps, ActorRef podDeadLetterRef) {
         this.childProps = childProps;
         this.podDeadLetterRef = podDeadLetterRef;
+        this.notifyCreatedChild = true;
     }
 
     @Override
@@ -92,6 +127,9 @@ public class PodManagerActor extends PersistentActor {
             podDeadLetterRef.tell(new RegisterPodDeadLettersMsg(), self);
         }
     }
+
+    @Override
+    public Class getSnapshotClass() { return HashMap.class; }
 
     /**
      * Restores children on startup
@@ -140,7 +178,7 @@ public class PodManagerActor extends PersistentActor {
                             child.tell(msg.getMsg(), sender);
                         }
                         saveSnapshot(kids);
-                        if (null != sender) {
+                        if (notifyCreatedChild && null != sender) {
                             sender.tell(new CreatedChildMsg(name), self);
                         }
                         log.trace("{} created child: {}", self.path, name);

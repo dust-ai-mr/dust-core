@@ -78,46 +78,65 @@ public class PubSubActor extends Actor {
      */
     protected ActorBehavior createBehavior() {
         return message -> {
-            if (message instanceof PubSubMsg msg) {
-                HashMap<String, ActorRef> registrants = subs.get(((PubSubMsg)message).fqn);
+            switch (message) {
+                case PubSubMsg msg -> {
+                    HashMap<String, ActorRef> registrants = subs.get(msg.fqn);
 
-                log.trace("%s received subscription for %s from %s".formatted(self.path, ((PubSubMsg)message).fqn, sender.path));
+                    log.trace("%s received subscription for %s from %s".formatted(self.path, msg.fqn, sender.path));
 
-                if (msg.subscribe) {
-                    if (null == registrants) {
-                        registrants = new HashMap<>();
-                        registrants.put(sender.path, sender);
-                        subs.put(msg.fqn, registrants);
+                    if (msg.subscribe) {
+                        if (null == registrants) {
+                            registrants = new HashMap<>();
+                            registrants.put(sender.path, sender);
+                            subs.put(msg.fqn, registrants);
+                        } else
+                            registrants.computeIfAbsent(sender.path, k -> sender);
+
+                        watch(sender);
                     }
-                    else
-                        registrants.computeIfAbsent(sender.path, k -> sender);
-                    watch(sender);
-                }
-                else {
-                    if (null != registrants) {
-                        registrants.remove(sender.path);
-                        if (registrants.isEmpty()) {
-                            stopSelf();
+                    else { // An unsubscribe
+                        if (null != registrants) {
+                            registrants.remove(sender.path);
+                            if (registrants.isEmpty()) {
+                                subs.remove(msg.fqn);
+                                if (subs.isEmpty())
+                                    tellSelf(new _NoSubscriptions());
+                            }
                         }
                     }
                 }
-            }
-            else if (message instanceof _Publish msg) {
-                if (!msg.subs.isEmpty()) {
-                    msg.subs.removeFirst().tell(msg.msg, msg.sender);
-                    self.tell(msg, self);
+                case _Publish msg -> {
+                    if (!msg.subs.isEmpty()) {
+                        msg.subs.removeFirst().tell(msg.msg, msg.sender);
+                        self.tell(msg, self);
+                    }
                 }
-            }
-            else if (message instanceof Terminated) {
-                for (HashMap<String, ActorRef> map: subs.values()) {
-                    map.remove(sender.path);
+                case Terminated terminated -> {
+                    log.trace("{} received terminated message from {}", self.path, sender.path);
+                    LinkedList<String> toRemove = new LinkedList<>();
+                    for (String fqn : subs.keySet()) {
+                        HashMap<String, ActorRef> registrants = subs.get(fqn);
+                        registrants.remove(sender.path);
+                        if (registrants.isEmpty())
+                            toRemove.add(fqn);
+                    }
+                    for (String fqn : toRemove) {
+                        subs.remove(fqn);
+                    }
+                    if (subs.isEmpty())
+                        tellSelf(new _NoSubscriptions());
                 }
-            }
-            else {
-                HashMap<String, ActorRef> registrants = subs.get(message.getClass().getName());
-                if (null != registrants) {
-                    _Publish publish = new _Publish(sender, message, new LinkedList<>(registrants.values().stream().toList()));
-                    self.tell(publish, self);
+                case _NoSubscriptions ignored -> {
+                    // Default behavior is to stop. Override in subclass if you want something else.
+                    log.trace("{} has no subscribers. Stopping ...", self.path);
+                    stopSelf();
+                }
+                case null, default -> {
+                    HashMap<String, ActorRef> registrants = subs.get(message.getClass().getName());
+                    if (null != registrants) {
+                        _Publish publish = new _Publish(sender, message, new LinkedList<>(registrants.values().stream().toList()));
+                        self.tell(publish, self);
+                    }
                 }
             }
         };
@@ -160,4 +179,6 @@ public class PubSubActor extends Actor {
             this.subs = subs;
         }
     }
+
+    static protected class _NoSubscriptions implements Serializable {}
 }

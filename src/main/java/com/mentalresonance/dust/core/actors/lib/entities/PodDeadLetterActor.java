@@ -42,6 +42,7 @@ import java.util.List;
  */
 @Slf4j
 public class PodDeadLetterActor extends Actor {
+
     final HashMap<String, List<Class<?>>> pathCache = new HashMap<>();
 
     /**
@@ -89,7 +90,7 @@ public class PodDeadLetterActor extends Actor {
                     String senderPath = null != dl.getSender() ? dl.getSender().path : null;
                     String recipientParentPath = recipientPath.substring(0, recipientPath.lastIndexOf('/'));
 
-                    /**
+                    /*
                      * We do not start an Actor to accept a message it has sent itself! this can happen when we stop
                      * ourselves with messages still in the Q. They go to dead letters and then here. But I stopped myself !!
                      */
@@ -97,7 +98,7 @@ public class PodDeadLetterActor extends Actor {
                         return;
                     }
 
-                    /**
+                    /*
                      * Ignore dead letters which should not reinvoke the Actor ever
                      */
                     switch (dl.getMessage()) {
@@ -130,12 +131,14 @@ public class PodDeadLetterActor extends Actor {
                                     );
                             }
                             else {
-                                log.warn("Unhandled Dead letter to:{} from:{} msg:{}. Is {} registered ?",
-                                    recipientPath,
-                                    senderPath,
-                                    dl,
-                                    recipientParentPath
-                                );
+                                if (!(dl.getMessage() instanceof ZombieMsg)) {
+                                    log.warn("Unhandled Dead letter to:{} from:{} msg:{}. Is {} registered ?",
+                                            recipientPath,
+                                            senderPath,
+                                            dl,
+                                            recipientParentPath
+                                    );
+                                }
                             }
                     }
                 }
@@ -143,10 +146,11 @@ public class PodDeadLetterActor extends Actor {
                  * Register the sender and return his message as acknowledgement.
                  */
                 case RegisterPodDeadLettersMsg msg -> {
-                    log.trace("%s registering with %s. Messages=%s".formatted(
-                            sender.path,
-                            self.path,
-                            null != msg.acceptedMessages ? msg.acceptedMessages.toString() : "")
+                    log.trace(
+                        "{} registering with {}. Messages={}",
+                        sender.path,
+                        self.path,
+                        null != msg.acceptedMessages ? msg.acceptedMessages.toString() : ""
                     );
                     pathCache.put(normalizePath(sender.path), msg.acceptedMessages);
                     sender.tell(msg, self);
@@ -157,13 +161,13 @@ public class PodDeadLetterActor extends Actor {
         };
     }
 
-    String normalizePath(String s) {
+    private String normalizePath(String s) {
         if (s.endsWith("/"))
             s = s.substring(0, s.length() - 1);
         return s;
     }
 
-    String nameFromPath(String s) {
+    private String nameFromPath(String s) {
         return s.substring(1 + s.lastIndexOf('/'));
     }
 }

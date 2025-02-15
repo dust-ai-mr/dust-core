@@ -40,9 +40,8 @@ public class ActorSystemConnectionManager {
     private static final Object SocketLock = new Object();
     private static final Integer SocketsPerRemote = 16;
 
-    long lastPing = 0;
-    final long PING_INTERVAL = 5000;
-    final long PING_TIMEOUT = 10000;
+    final long PING_INTERVAL = 15000; // How often we check
+    final long PING_TIMEOUT = 30000;  // If haven't heard from a connection over this time then flush it
 
     final Thread managerThread;
 
@@ -65,9 +64,7 @@ public class ActorSystemConnectionManager {
                 while (running) {
                     try {
                         Thread.sleep(PING_INTERVAL);
-                        if (System.currentTimeMillis() - lastPing > PING_TIMEOUT) {
-                            flushPool(false);
-                        }
+                        flushPool(false);
                     }
                     catch (InterruptedException e) {
                         running = false;
@@ -109,11 +106,14 @@ public class ActorSystemConnectionManager {
                 for (String key : remoteActorSystems.keySet()) {
                     ConnectionPool pool = remoteActorSystems.get(key);
                     if (all || System.currentTimeMillis() - pool.lastPing > PING_TIMEOUT) {
-                        log.info("Flushing pool for key: %s".formatted(key));
+                        log.trace("Flushing pool for key: %s".formatted(key));
                         for (WrappedTCPObjectSocket socket : pool.q) {
-                            socket.tcpObjectSocket.writeObject(null);
-                            socket.tcpObjectSocket.flush();
-                            socket.tcpObjectSocket.getSocket().close();
+                            if (! socket.tcpObjectSocket.isClosed()) {
+                                socket.tcpObjectSocket.writeObject(null);
+                                socket.tcpObjectSocket.flush();
+                                socket.tcpObjectSocket.getSocket().close();
+                            } else
+                                log.warn("Socket to remote actor system {} was closed", key);
                         }
                         remoteActorSystems.remove(key);
                     }
@@ -137,7 +137,7 @@ public class ActorSystemConnectionManager {
         synchronized (SocketLock) {
             if (!remoteActorSystems.containsKey(key)) {
                 ConnectionPool pool = new ConnectionPool();
-                log.info("Creating new pool for: %s".formatted(key));
+                log.trace("Creating new pool for: %s".formatted(key));
                 pool.q = new LinkedBlockingQueue<>();
 
                 for (int i = 0; i < SocketsPerRemote; ++i) {
@@ -152,7 +152,6 @@ public class ActorSystemConnectionManager {
                 remoteActorSystems.put(key, pool);
             }
         }
-        lastPing = System.currentTimeMillis();
         return remoteActorSystems.get(key).q.take();
     }
 

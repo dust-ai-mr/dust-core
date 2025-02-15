@@ -88,13 +88,13 @@ public class ServiceManagerActor extends Actor {
                         LinkedList<Serializable> record = msgQ.removeFirst();
                         watch(actorOf(serviceProps)).tell(record.getFirst(), (ActorRef) record.getLast());
                         ++currentWorkers;
-                        log.trace("ServiceManager {} has {} workers. Max={}", self.path, currentWorkers, maxWorkers);
+                        log.trace("ServiceManager Pumped {} has {} workers. Max={}. Mailbox size={}", self.path, currentWorkers, maxWorkers, self.mailBox.getQueue().size());
                     }
                 }
 
                 case Terminated ignored -> {
                     --currentWorkers;
-                    log.trace("ServiceManager {} has {} workers. Max={}", self.path, currentWorkers, maxWorkers);
+                    log.trace("ServiceManager Terminated {} now has {} workers. Max={}. Mailbox size={}", self.path, currentWorkers, maxWorkers, self.mailBox.getQueue().size());
                     self.tell(new _ServiceManagerPumpMsg(), self);
                 }
 
@@ -104,6 +104,7 @@ public class ServiceManagerActor extends Actor {
                     if (currentWorkers < maxWorkers) {
                         watch(actorOf(serviceProps)).tell(message, sender);
                         ++currentWorkers;
+                        log.trace("ServiceManager Submitted {} has {} workers. Max={}. Mailbox size={}", self.path, currentWorkers, maxWorkers, self.mailBox.getQueue().size());
                     }
                     else {
                         // Cannot use List.of() as it does not allow null entries and we may have null sender
@@ -111,6 +112,7 @@ public class ServiceManagerActor extends Actor {
                         tuple.add(message);
                         tuple.add(sender);
                         msgQ.add(tuple);
+                        log.trace("ServiceManager Added {} has {} workers. Max={}. Mailbox size={}", self.path, currentWorkers, maxWorkers, self.mailBox.getQueue().size());
                     }
                 }
             }

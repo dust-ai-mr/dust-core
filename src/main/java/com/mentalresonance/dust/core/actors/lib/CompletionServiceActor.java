@@ -24,6 +24,7 @@ import com.mentalresonance.dust.core.actors.ActorBehavior;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.CompletionRequestMsg;
 import com.mentalresonance.dust.core.msgs.ReturnableMsg;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -36,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
  *
  *  @author alanl
  */
+@Slf4j
 public class CompletionServiceActor extends Actor {
 
     CompletableFuture<Object> future;
@@ -79,6 +81,7 @@ public class CompletionServiceActor extends Actor {
     protected ActorBehavior createBehavior() {
         return message -> {
             if (Objects.requireNonNull(message) instanceof CompletionRequestMsg msg) {
+                log.trace("Received CompletionRequestMsg: {} from {} to {}", msg, sender, msg.target);
                 Serializable passThrough = msg.getPassThroughMsg();
                 future = msg.getFuture();
                 msg.setSender(self);
@@ -91,6 +94,7 @@ public class CompletionServiceActor extends Actor {
                 } else
                     msg.target.tell(msg, self);
             } else {
+                log.trace("Got response from {}. Completing.", sender);
                 future.complete(message);
                 stopSelf();
             }

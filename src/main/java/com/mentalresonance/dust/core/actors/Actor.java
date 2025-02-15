@@ -83,6 +83,13 @@ public class Actor implements Runnable {
     private static boolean debug = false;
 
     /**
+     * Set if I took an exception. postStop() is called even on an exception and this
+     * can sometimes be unwanted (e.g. a persistent Actor may destroy its state in a postStop on the assumption
+     * it is no longer needed.
+     */
+    protected Throwable isException = null;
+
+    /**
      * Currently active behavior.
      */
     protected ActorBehavior behavior;
@@ -127,15 +134,23 @@ public class Actor implements Runnable {
 
     /**
      * To be overriden. If the Actor specifies no overriding message then all unhandled (system) messages
-     * are handled here. For convenience we just soak up messages and log them.
+     * are handled here. For convenience we just soak up messages and log them appropriately.
      * @return a default behaviour
      */
     protected ActorBehavior createBehavior() {
-        return msg -> {
-            if (Objects.requireNonNull(msg) instanceof ChildExceptionMsg cem) {
-                log.warn(String.format("%s: Exception from child: %s - %s", self.path, sender, cem.getException().getMessage()));
-            } else {
-                log.warn(String.format("%s: no behavior. Cannot handle %s from %s", self.path, msg, sender));
+        return message -> {
+            switch(message) {
+
+                case ChildExceptionMsg msg -> {
+                    log.warn(String.format("%s: Exception from child: %s - %s", self.path, sender, msg.getException().getMessage()));
+                }
+                case CreatedChildMsg msg -> {
+                    // Commonly ignored
+                    log.trace("{}: no behavior. Cannot handle {} from {}", self.path, msg, sender);
+                }
+                default -> {
+                    log.warn("{}: no behavior. Cannot handle {} from {}", self.path, message, sender);
+                }
             }
         };
     }
@@ -290,6 +305,7 @@ public class Actor implements Runnable {
                     running = false;
                 }
                 case ActorRef.LC_RESTART -> {
+                    isException = null; // Clear exception flag
                     preRestart(self.restartCause);
                     running = true;
                 }
@@ -471,6 +487,8 @@ public class Actor implements Runnable {
              */
             catch (Throwable t)
             {
+                isException = t;
+
                 try { // Sometimes toString()ing the message can throw an Exception !!
                     log.error(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
                     if (debug) t.printStackTrace();
@@ -547,6 +565,8 @@ public class Actor implements Runnable {
             }
             catch (Exception e) {
                 log.error(String.format("%s postStop() exception: %s", self.path, e.getMessage()));
+                if (debug)
+                    e.printStackTrace();
                 // Todo: what ???
             }
             self.mailBox.queue = null;

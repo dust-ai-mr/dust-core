@@ -25,6 +25,7 @@ import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.actors.lib.PubSubActor;
 import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.PubSubMsg;
+import com.mentalresonance.dust.core.msgs.ZombieMsg;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -95,7 +96,7 @@ public class DeadLetterActor extends PubSubActor {
                         self.tell(publish, self);
                     }
 
-                    if (logDeadLetters && ! hasRegistrants)
+                    if (logDeadLetters && (!hasRegistrants) && !(dl.getMessage() instanceof ZombieMsg)) {}
                         log.warn("Dead letter %s from %s to %s [hasRegistrants=%b]".formatted(dl.getMessage(), dl.getSender(), dl.getPath(), hasRegistrants));
                 }
 
