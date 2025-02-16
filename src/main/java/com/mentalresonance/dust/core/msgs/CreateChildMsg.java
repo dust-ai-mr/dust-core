@@ -60,4 +60,13 @@ public class CreateChildMsg implements Serializable {
         this.name = name;
         this.msg = msg;
     }
+
+    /**
+     * Useful to know the message if being handled by dead-letter/pod manager
+     * @return
+     */
+    @Override
+    public String toString() {
+        return "CreateChildMsg Name:" + name + " Msg:" + msg;
+    }
 }

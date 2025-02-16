@@ -32,6 +32,11 @@ dependencies {
     implementation "de.ruedigermoeller:fst:3.0.3"
 
     implementation 'com.google.code.gson:gson:2.10.1'
+
+    implementation platform('com.fasterxml.jackson:jackson-bom:latest.release')
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.core:jackson-core'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations'
 }
 
 publishing {
