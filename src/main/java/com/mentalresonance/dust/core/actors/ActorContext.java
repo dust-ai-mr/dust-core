@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024-2025 Alan Littleford
+ *  Copyright 2024-Present Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -270,9 +270,19 @@ public class ActorContext {
     /**
      * Stop the actor at the ref by interrupting his mailbox
      * @param ref the Actor to stop
+     * @param cause sets isException in the stopping ref
+     */
+    public void stop(ActorRef ref, Throwable cause) {
+        ref.isException = cause;
+        ref.thread.interrupt();
+    }
+
+    /**
+     * Default stop - no cause given
+     * @param ref
      */
     public void stop(ActorRef ref) {
-        ref.thread.interrupt();
+        stop(ref, null);
     }
 
     /**

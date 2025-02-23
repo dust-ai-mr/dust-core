@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024-2025 Alan Littleford
+ *  Copyright 2024-Present Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -57,6 +57,13 @@ public class ActorRef implements Serializable {
      */
     @Setter
     Boolean isDeadLetter = false;
+
+    /**
+     * Set if I took an exception. postStop() is called even on an exception and this
+     * can sometimes be unwanted (e.g. a persistent Actor may destroy its state in a postStop on the assumption
+     * it is no longer needed.
+     */
+    public Throwable isException = null;
 
     /**
      * The thread running the Actor if local else null

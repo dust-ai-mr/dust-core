@@ -10,7 +10,7 @@ import spock.lang.Specification
 
 /*
  *
- *  Copyright 2024-2025 Alan Littleford
+ *  Copyright 2024-Present Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.

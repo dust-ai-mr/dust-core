@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024-2025 Alan Littleford
+ *  Copyright 2024-Present Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -81,13 +81,6 @@ public class Actor implements Runnable {
      */
     @Setter
     private static boolean debug = false;
-
-    /**
-     * Set if I took an exception. postStop() is called even on an exception and this
-     * can sometimes be unwanted (e.g. a persistent Actor may destroy its state in a postStop on the assumption
-     * it is no longer needed.
-     */
-    protected Throwable isException = null;
 
     /**
      * Currently active behavior.
@@ -305,11 +298,12 @@ public class Actor implements Runnable {
                     running = false;
                 }
                 case ActorRef.LC_RESTART -> {
-                    isException = null; // Clear exception flag
+                    self.isException = null; // Clear exception flag
                     preRestart(self.restartCause);
                     running = true;
                 }
                 case ActorRef.LC_RESUME -> {
+                    self.isException = null;
                     onResume();
                     running = true;
                 }
@@ -487,7 +481,7 @@ public class Actor implements Runnable {
              */
             catch (Throwable t)
             {
-                isException = t;
+                self.isException = t;
 
                 try { // Sometimes toString()ing the message can throw an Exception !!
                     log.error(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
@@ -586,11 +580,12 @@ public class Actor implements Runnable {
      */
     private void startStopping() {
         log.trace("{} stopping, Has {} children", self.path, children.size());
+        ParentException pex = self.isException != null ? new ParentException(self.isException) : null;
         if (! children.isEmpty()) {
             stopping = true;
             children.forEach((name, child) -> {
                 child.lifecycle = ActorRef.LC_STOP;
-                context.stop(child);
+                context.stop(child, pex);
             });
         } else
             running = false;

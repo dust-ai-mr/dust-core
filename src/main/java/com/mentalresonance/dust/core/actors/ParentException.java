@@ -17,11 +17,26 @@
  *
  */
 
-package com.mentalresonance.dust.core.msgs;
-
-import java.io.Serializable;
-
 /**
- * Some (relatively rare) messages need not to be delegated.
+ * If an Actor is stopping because it threw an exception the tree of child Actors will
+ * be given this exception as though they had thrown it themselves. Thus a child Actor can
+ * tailor its postStop() behavior (e.g. not deleting state if a persistent Actor) based on this.
+ *
+ * So if an Actor sees this Exception it knows 'cause' got thrown by an ancestor.
  */
-public interface NonDelegatedMsg extends Serializable { }
+package com.mentalresonance.dust.core.actors;
+
+import lombok.Getter;
+
+@Getter
+public class ParentException extends Exception {
+
+    /**
+     * The original sin
+     */
+    Throwable cause;
+
+    public ParentException(Throwable cause) {
+        this.cause = cause;
+    }
+}
