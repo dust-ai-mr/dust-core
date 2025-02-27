@@ -350,6 +350,25 @@ public class ActorRef implements Serializable {
         return ancestors[ancestors.length - 4];
     }
 
+    /**
+     * Put the stashed messages at the *front* of the mailbox
+     * @param stash
+     */
+    public void unstashAll(List<SentMessage> stash) {
+        Object[] old;
+        mailBox.queue.takeLock.lock();
+        mailBox.queue.putLock.lock();
+
+        old = mailBox.queue.toArray();
+        mailBox.queue.clear();
+        mailBox.queue.addAll(stash);
+        for (Object o : old) {
+            mailBox.queue.add((SentMessage) o);
+        }
+        mailBox.queue.takeLock.unlock();
+        mailBox.queue.putLock.unlock();
+    }
+
     private void makeAncestors() {
         String newpath = path;
 

@@ -21,6 +21,7 @@ package com.mentalresonance.dust.core.actors;
 
 import com.mentalresonance.dust.core.msgs.*;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
+import com.mentalresonance.dust.core.utils.DustLinkedBlockingQueue;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +29,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
 import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*;
 
 /**
@@ -692,10 +692,10 @@ public class Actor implements Runnable {
     }
 
     /**
-     * Add all stashed messages, in order, to our mailbox. These are added to the end of the mailbox
+     * Add all stashed messages, in order, to our mailbox. These are added to the *front* of the mailbox
      */
     protected void unstashAll() {
-        self.mailBox.queue.addAll(stashed);
+        self.unstashAll(stashed);
         stashed = new LinkedList<>();
     }
     /**
@@ -1010,7 +1010,7 @@ public class Actor implements Runnable {
         @Setter
         Boolean dead = false;
         @Getter
-        LinkedBlockingQueue<SentMessage> queue = new LinkedBlockingQueue<>();
+        DustLinkedBlockingQueue<SentMessage> queue = new DustLinkedBlockingQueue<>();
 
         /**
          * Create mailbox
