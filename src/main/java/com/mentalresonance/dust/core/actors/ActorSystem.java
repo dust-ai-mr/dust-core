@@ -33,6 +33,8 @@ import org.nustaq.net.TCPObjectServer;
 import org.nustaq.net.TCPObjectSocket;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
@@ -321,6 +323,10 @@ public class ActorSystem {
                                     sender = context.actorSelection(sender.path);
                                 }
                                 target.tell(msg.message, sender);
+                                PrintWriter writer = new PrintWriter(client.getSocket().getOutputStream(), true);
+                                writer.println("ACK"); // App level confirm to serialize messages to same Actor
+                                writer.flush();
+
                             } catch (Exception e) {
                                 log.error(String.format("Error in server(): %s", e.getMessage()));
                             }

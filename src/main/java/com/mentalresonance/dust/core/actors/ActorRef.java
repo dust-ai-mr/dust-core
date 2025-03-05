@@ -25,6 +25,8 @@ import com.mentalresonance.dust.core.msgs.WatchMsg;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.nustaq.net.TCPObjectSocket;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.URI;
 import java.util.List;
@@ -215,6 +217,9 @@ public class ActorRef implements Serializable {
                     // log.trace("ActorSystem sending: " + message + " to " + path + " [Remote]");
                     socket.writeObject(sentMessage);
                     socket.flush();
+                    //socket.getSocket().getInputStream().readAllBytes(); // Expecting app level "ACK" from server
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getSocket().getInputStream()));
+                    reader.readLine();
                 }
                 catch (Exception e) {
                     log.error("Could not get socket: " + e.getMessage());
@@ -355,14 +360,16 @@ public class ActorRef implements Serializable {
      * @param stash
      */
     public void unstashAll(List<SentMessage> stash) {
-        Object[] old;
+        Object[] newMsgs;
+
         mailBox.queue.takeLock.lock();
         mailBox.queue.putLock.lock();
 
-        old = mailBox.queue.toArray();
+        newMsgs = mailBox.queue.toArray();
         mailBox.queue.clear();
         mailBox.queue.addAll(stash);
-        for (Object o : old) {
+
+        for (Object o : newMsgs) {
             mailBox.queue.add((SentMessage) o);
         }
         mailBox.queue.takeLock.unlock();

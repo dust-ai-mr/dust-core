@@ -26,6 +26,7 @@ import org.nustaq.net.TCPObjectSocket;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URI;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -112,8 +113,10 @@ public class ActorSystemConnectionManager {
                                 socket.tcpObjectSocket.writeObject(null);
                                 socket.tcpObjectSocket.flush();
                                 socket.tcpObjectSocket.getSocket().close();
-                            } else
+                            } else {
                                 log.warn("Socket to remote actor system {} was closed", key);
+                                pool.q.remove(socket);
+                            }
                         }
                         remoteActorSystems.remove(key);
                     }
@@ -136,23 +139,11 @@ public class ActorSystemConnectionManager {
 
         synchronized (SocketLock) {
             if (!remoteActorSystems.containsKey(key)) {
-                ConnectionPool pool = new ConnectionPool();
-                log.trace("Creating new pool for: %s".formatted(key));
-                pool.q = new LinkedBlockingQueue<>();
-
-                for (int i = 0; i < SocketsPerRemote; ++i) {
-                    pool.q.add(
-                            new WrappedTCPObjectSocket(
-                                    key,
-                                    new TCPObjectSocket(uri.getHost(), uri.getPort(), SerializationService.getFstConfiguration())
-                            )
-                    );
-                }
-                pool.lastPing = System.currentTimeMillis();
+                ConnectionPool pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
                 remoteActorSystems.put(key, pool);
             }
         }
-        return remoteActorSystems.get(key).q.take();
+        return remoteActorSystems.get(key).acquire(uri.getPath());
     }
 
     /**
@@ -207,7 +198,7 @@ public class ActorSystemConnectionManager {
      */
     public void returnSocket(WrappedTCPObjectSocket objectSocket) {
         // log.trace("Returning socket");
-        remoteActorSystems.get(objectSocket.key).q.add(objectSocket);
+        remoteActorSystems.get(objectSocket.key).restore(objectSocket);
     }
 
     /**
@@ -215,6 +206,7 @@ public class ActorSystemConnectionManager {
      */
     public static class WrappedTCPObjectSocket {
         final String key;
+        public String path; // To Actor when the Socket is used
         /**
          * The TCPObjectSocket
          */
@@ -222,18 +214,75 @@ public class ActorSystemConnectionManager {
 
         /**
          * Constructor
-         * @param key to associate with the ..
+         * @param key to associate with the socket
          * @param tcpObjectSocket .. socket
          */
         public WrappedTCPObjectSocket(String key, TCPObjectSocket tcpObjectSocket) {
             this.key = key;
             this.tcpObjectSocket = tcpObjectSocket;
+
         }
 
     }
 
+    /**
+     * Pool of connections fdr one remote ActorSystem. But we have to be careful - we could send two messages to
+     * the same remote Actor over two sockets and they could arrive out of order. This cannot be allowed so we block on the
+     *
+     */
     private static class ConnectionPool {
         long lastPing;
         LinkedBlockingQueue<WrappedTCPObjectSocket> q;
+        ConcurrentHashMap<String, Object> resourceLocks = new ConcurrentHashMap<>(SocketsPerRemote);
+        ConcurrentHashMap<String, Queue<Thread>> waiting = new ConcurrentHashMap<>();
+
+        ConnectionPool(int size, String key, String host, int port) throws IOException {
+            log.trace("Creating new pool for: %s".formatted(key));
+            q = new LinkedBlockingQueue<>();
+
+            for (int i = 0; i < SocketsPerRemote; ++i) {
+                q.add(
+                    new WrappedTCPObjectSocket(
+                        key,
+                        new TCPObjectSocket(host, port, SerializationService.getFstConfiguration())
+                    )
+                );
+            }
+            lastPing = System.currentTimeMillis();
+        }
+
+        private Object getLock(String key) {
+            return resourceLocks.computeIfAbsent(key, k -> new Object());
+        }
+
+        WrappedTCPObjectSocket acquire(String path) throws IOException, InterruptedException {
+            Object lock = getLock(path);
+            synchronized (lock) {
+                Queue<Thread> queue = waiting.computeIfAbsent(path, k -> new LinkedBlockingQueue<>());
+                Thread currentThread = Thread.currentThread();
+                queue.add(currentThread);
+
+                // Wait until I am at the head of the queue but do not pop me
+                while (queue.peek() != currentThread) {
+                    lock.wait();
+                }
+                WrappedTCPObjectSocket socket =  q.take();
+                socket.path = path;
+                return socket;
+            }
+        }
+
+        void restore(WrappedTCPObjectSocket objectSocket) {
+            Object lock = getLock(objectSocket.path);
+            synchronized (lock) {
+                Queue<Thread> queue = waiting.get(objectSocket.path); // I know I am still here on the head
+                queue.remove(); // So remove me
+                q.add(objectSocket); // Return socket
+                if (! queue.isEmpty()) { // An notify the next waitee or dump the queue
+                    lock.notifyAll();
+                } else
+                    waiting.remove(objectSocket.path);
+            }
+        }
     }
 }
