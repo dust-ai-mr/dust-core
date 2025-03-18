@@ -136,14 +136,25 @@ public class ActorSystemConnectionManager {
      */
     public WrappedTCPObjectSocket getSocket(URI uri) throws IOException, InterruptedException {
         String key = remoteKey(uri);
+        int retries = 3;
 
-        synchronized (SocketLock) {
-            if (!remoteActorSystems.containsKey(key)) {
+        while (retries-- > 0) {
+            try {
+                synchronized (SocketLock) {
+                    if (!remoteActorSystems.containsKey(key)) {
+                        ConnectionPool pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
+                        remoteActorSystems.put(key, pool);
+                    }
+                }
+                return remoteActorSystems.get(key).acquire(uri.getPath());
+            } catch (IOException e) {
+                log.warn("Failed to get connection to: {}. Retrying.", uri.toString());
                 ConnectionPool pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
                 remoteActorSystems.put(key, pool);
             }
         }
-        return remoteActorSystems.get(key).acquire(uri.getPath());
+        log.error("Cannot get connection to remote actor system: {}", uri.toString());
+        throw new IOException();
     }
 
     /**
@@ -227,7 +238,7 @@ public class ActorSystemConnectionManager {
 
     /**
      * Pool of connections fdr one remote ActorSystem. But we have to be careful - we could send two messages to
-     * the same remote Actor over two sockets and they could arrive out of order. This cannot be allowed so we block on the
+     * the same remote Actor over two sockets and they could arrive out of order.
      *
      */
     private static class ConnectionPool {

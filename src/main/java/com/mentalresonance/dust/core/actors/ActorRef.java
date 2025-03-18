@@ -221,8 +221,12 @@ public class ActorRef implements Serializable {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getSocket().getInputStream()));
                     reader.readLine();
                 }
+                catch (InterruptedException ie) {
+                    log.error("Could not get socket to {}: Interrupted", path);
+                    success = false;
+                }
                 catch (Exception e) {
-                    log.error("Could not get socket: " + e.getMessage());
+                    log.error("Could not get socket to {}: {}", path, e.getMessage());
                     success = false;
                 }
                 finally {
