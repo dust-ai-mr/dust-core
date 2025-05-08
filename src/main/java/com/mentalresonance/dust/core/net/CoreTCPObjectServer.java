@@ -45,6 +45,7 @@ public class CoreTCPObjectServer {
     volatile boolean terminated;
     final ActorSystemConnectionManager actorSystemConnectionManager;
     final CompletableFuture<Boolean> haveStopped;
+    Thread serverThread;
 
     /**
      * A server
@@ -71,7 +72,7 @@ public class CoreTCPObjectServer {
      */
     public void start(final org.nustaq.net.TCPObjectServer.NewClientListener listener) throws IOException {
         final ActorSystemConnectionManager connectionManager = actorSystemConnectionManager;
-        new Thread("server "+port) {
+        serverThread = new Thread("server "+port) {
             public void run() {
                 try {
                     welcomeSocket = new ServerSocket(port);
@@ -105,7 +106,8 @@ public class CoreTCPObjectServer {
                     }
                 }
             }
-        }.start();
+        };
+        serverThread.start();
     }
 
     /**
@@ -114,10 +116,12 @@ public class CoreTCPObjectServer {
      */
     public void stop() {
         try {
+            log.info("Stopping server on port " + port);
             terminated = true;
             TCPObjectSocket socket = new TCPObjectSocket("localhost", port, SerializationService.getFstConfiguration());
             socket.writeObject(null);
             socket.flush();
+            serverThread.interrupt();
         }
         catch (Exception e) {
             log.error("Stopping server: %s".formatted(e.getMessage()));

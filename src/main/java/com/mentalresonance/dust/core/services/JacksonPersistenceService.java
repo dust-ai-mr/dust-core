@@ -21,6 +21,8 @@ package com.mentalresonance.dust.core.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mentalresonance.dust.core.utils.StringUtils;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -60,6 +62,7 @@ public class JacksonPersistenceService implements PersistenceService {
 
     private static ObjectMapper objectMapper;
 
+    public boolean isHashedId = true;  // Backward compatability
     /**
      * Constructor
      */
@@ -78,7 +81,7 @@ public class JacksonPersistenceService implements PersistenceService {
      * @throws IOException on error
      * @return common DBPersistenceService
      */
-    public static PersistenceService create(String directory, String extension) throws IOException {
+    public static JacksonPersistenceService create(String directory, String extension) throws IOException {
         if (null == jacksonPersistenceService)
         {
             if (! extension.startsWith(".")) extension = ".".concat(extension);
@@ -105,7 +108,7 @@ public class JacksonPersistenceService implements PersistenceService {
      * @return the persistenceService
      * @throws IOException on file system errors
      */
-    public static PersistenceService create(String directory) throws IOException {
+    public static JacksonPersistenceService create(String directory) throws IOException {
         return create(directory, "json");
     }
 
@@ -115,7 +118,7 @@ public class JacksonPersistenceService implements PersistenceService {
      * @return the persistence service
      * @throws IOException on error
      */
-    public static PersistenceService create() throws IOException {
+    public static JacksonPersistenceService create() throws IOException {
         String directory =
                 null != System.getProperty("config.snapshots") ? System.getProperty("config.snapshots") :
                 null != System.getenv("SNAPSHOTS") ? System.getenv("SNAPSHOTS") :
@@ -144,7 +147,7 @@ public class JacksonPersistenceService implements PersistenceService {
 
         try {
             byte[] blob = objectMapper.writeValueAsBytes(object);
-            Path p = Paths.get(SNAPSHOTS + "/" + hashId(id) + fileType);
+            Path p = Paths.get(SNAPSHOTS + "/" + (isHashedId ? hashId(id) : id) + fileType);
             Files.write(p, blob, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         }
         catch (Throwable e) {
@@ -183,7 +186,7 @@ public class JacksonPersistenceService implements PersistenceService {
         available.acquire();
 
         try {
-            Path p = Paths.get(SNAPSHOTS + "/" + hashId(id) + fileType);
+            Path p = Paths.get(SNAPSHOTS + "/" + (isHashedId ? hashId(id) : id) + fileType);
             if (! Files.exists(p))
                 object = null;
             else
@@ -210,7 +213,7 @@ public class JacksonPersistenceService implements PersistenceService {
 
         try {
             available.acquire();
-            Path p = Paths.get(SNAPSHOTS + "/" + hashId(id) + fileType);
+            Path p = Paths.get(SNAPSHOTS + "/" + (isHashedId ? hashId(id) : id) + fileType);
             if (Files.exists(p))
                 Files.delete(p);
         }

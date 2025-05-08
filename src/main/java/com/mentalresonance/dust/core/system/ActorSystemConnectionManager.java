@@ -85,7 +85,7 @@ public class ActorSystemConnectionManager {
      * we tend to get things like localhost - 127.0.0.1 conflicts. So we wrap the socket in a class which contains
      * the key it was stored under, so when we return it we have no doubts.
      */
-    private final ConcurrentHashMap<String, ConnectionPool> remoteActorSystems = new ConcurrentHashMap<>();
+    final ConcurrentHashMap<String, ConnectionPool> remoteActorSystems = new ConcurrentHashMap<>();
 
     /**
      * Get key from path
@@ -103,26 +103,13 @@ public class ActorSystemConnectionManager {
      */
     public void flushPool(boolean all) {
         synchronized (SocketLock) {
-            try {
-                for (String key : remoteActorSystems.keySet()) {
+            for (String key : remoteActorSystems.keySet()) {
+                try {
                     ConnectionPool pool = remoteActorSystems.get(key);
-                    if (all || System.currentTimeMillis() - pool.lastPing > PING_TIMEOUT) {
-                        log.trace("Flushing pool for key: %s".formatted(key));
-                        for (WrappedTCPObjectSocket socket : pool.q) {
-                            if (! socket.tcpObjectSocket.isClosed()) {
-                                socket.tcpObjectSocket.writeObject(null);
-                                socket.tcpObjectSocket.flush();
-                                socket.tcpObjectSocket.getSocket().close();
-                            } else {
-                                log.warn("Socket to remote actor system {} was closed", key);
-                                pool.q.remove(socket);
-                            }
-                        }
-                        remoteActorSystems.remove(key);
-                    }
+                    pool.flush(all);
+                } catch (Exception e) {
+                    log.error("flushPool(): %s".formatted(e.getMessage()));
                 }
-            } catch (Exception e) {
-                log.error("flushPool(): %s".formatted(e.getMessage()));
             }
         }
     }
@@ -136,24 +123,30 @@ public class ActorSystemConnectionManager {
      */
     public WrappedTCPObjectSocket getSocket(URI uri) throws IOException, InterruptedException {
         String key = remoteKey(uri);
-        int retries = 3;
+        ConnectionPool pool;
+        int retries = 5;
 
-        while (retries-- > 0) {
+        while (--retries >= 0) {
             try {
                 synchronized (SocketLock) {
                     if (!remoteActorSystems.containsKey(key)) {
-                        ConnectionPool pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
+                        pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
                         remoteActorSystems.put(key, pool);
                     }
                 }
                 return remoteActorSystems.get(key).acquire(uri.getPath());
-            } catch (IOException e) {
-                log.warn("Failed to get connection to: {}. Retrying.", uri.toString());
-                ConnectionPool pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
-                remoteActorSystems.put(key, pool);
+            }
+            catch (IOException e) {
+                log.warn("Failed to get connection to: {}. Retrying.", uri);
+                pool = remoteActorSystems.remove(key);
+                if (pool != null)
+                    try {
+                        pool.flush(true);
+                    } catch (Exception ignored) {}
+                Thread.sleep(3000L);
             }
         }
-        log.error("Cannot get connection to remote actor system: {}", uri.toString());
+        log.error("Cannot get connection to remote actor system: {}", uri);
         throw new IOException();
     }
 
@@ -209,7 +202,25 @@ public class ActorSystemConnectionManager {
      */
     public void returnSocket(WrappedTCPObjectSocket objectSocket) {
         // log.trace("Returning socket");
-        remoteActorSystems.get(objectSocket.key).restore(objectSocket);
+        ConnectionPool pool = remoteActorSystems.get(objectSocket.key);
+        if (pool != null) {
+            pool.restore(objectSocket);
+        } else
+            log.warn("Returning socket to unknown pool: {}", objectSocket.key);
+    }
+
+    /**
+     * Flush connection pool of all sockets associate with remote ActorSystem of uri
+     * @param uri
+     * @throws Exception
+     */
+    public void flushPool(URI uri) throws Exception {
+        // log.trace("Returning socket");
+        ConnectionPool pool = remoteActorSystems.get(remoteKey(uri));
+        if (pool != null) {
+            pool.flush(true);
+        } else
+            log.warn("Flushing unknown pool for: {}", uri);
     }
 
     /**
@@ -241,14 +252,16 @@ public class ActorSystemConnectionManager {
      * the same remote Actor over two sockets and they could arrive out of order.
      *
      */
-    private static class ConnectionPool {
+    private class ConnectionPool {
+        String key;
         long lastPing;
         LinkedBlockingQueue<WrappedTCPObjectSocket> q;
         ConcurrentHashMap<String, Object> resourceLocks = new ConcurrentHashMap<>(SocketsPerRemote);
         ConcurrentHashMap<String, Queue<Thread>> waiting = new ConcurrentHashMap<>();
 
         ConnectionPool(int size, String key, String host, int port) throws IOException {
-            log.trace("Creating new pool for: %s".formatted(key));
+            this.key = key;
+            log.trace("Creating new pool for: {}", key);
             q = new LinkedBlockingQueue<>();
 
             for (int i = 0; i < SocketsPerRemote; ++i) {
@@ -287,12 +300,34 @@ public class ActorSystemConnectionManager {
             Object lock = getLock(objectSocket.path);
             synchronized (lock) {
                 Queue<Thread> queue = waiting.get(objectSocket.path); // I know I am still here on the head
-                queue.remove(); // So remove me
-                q.add(objectSocket); // Return socket
-                if (! queue.isEmpty()) { // An notify the next waitee or dump the queue
-                    lock.notifyAll();
+                if (queue != null){
+                    queue.remove(); // So remove me
+                    q.add(objectSocket); // Return socket
+                    if (!queue.isEmpty()) { // An notify the next waitee or dump the queue
+                        lock.notifyAll();
+                    } else
+                        waiting.remove(objectSocket.path);
                 } else
-                    waiting.remove(objectSocket.path);
+                    log.warn("Returning socket to pool with no queue - pool:{}, socketkey: {}", key, objectSocket.key);
+            }
+        }
+
+        public void flush(boolean all) throws Exception {
+            if (all || System.currentTimeMillis() - lastPing > PING_TIMEOUT) {
+                log.trace("Flushing pool for key: %s".formatted(key));
+                for (WrappedTCPObjectSocket socket : q) {
+                    try {
+                        if (! socket.tcpObjectSocket.isClosed()) {
+                            socket.tcpObjectSocket.writeObject(null);
+                            socket.tcpObjectSocket.flush();
+                            socket.tcpObjectSocket.getSocket().close();
+                        } else {
+                            log.warn("Socket to remote actor system {} was closed", key);
+                            q.remove(socket);
+                        }
+                    } catch(Exception ignored) {}
+                }
+                remoteActorSystems.remove(key);
             }
         }
     }

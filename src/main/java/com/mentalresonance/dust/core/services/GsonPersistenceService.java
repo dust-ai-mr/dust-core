@@ -57,6 +57,8 @@ public class GsonPersistenceService implements PersistenceService {
 
     private static Gson gson;
 
+    public boolean isHashedId = true;  // Backward compatability
+
     /**
      * Constructor
      */
@@ -75,7 +77,7 @@ public class GsonPersistenceService implements PersistenceService {
      * @throws IOException on error
      * @return common DBPersistenceService
      */
-    public static PersistenceService create(String directory, String extension) throws IOException {
+    public static GsonPersistenceService create(String directory, String extension) throws IOException {
         if (null == gsonPersistenceService)
         {
             if (! extension.startsWith(".")) extension = ".".concat(extension);
@@ -102,7 +104,7 @@ public class GsonPersistenceService implements PersistenceService {
      * @return the persistenceService
      * @throws IOException on file system errors
      */
-    public static PersistenceService create(String directory) throws IOException {
+    public static GsonPersistenceService create(String directory) throws IOException {
         return create(directory, "json");
     }
 
@@ -112,7 +114,7 @@ public class GsonPersistenceService implements PersistenceService {
      * @return the persistence service
      * @throws IOException on error
      */
-    public static PersistenceService create() throws IOException {
+    public static GsonPersistenceService create() throws IOException {
         String directory =
                 null != System.getProperty("config.snapshots") ? System.getProperty("config.snapshots") :
                 null != System.getenv("SNAPSHOTS") ? System.getenv("SNAPSHOTS") :
@@ -141,7 +143,7 @@ public class GsonPersistenceService implements PersistenceService {
 
         try {
             byte[] blob = gson.toJson(object).getBytes();
-            Path p = Paths.get(SNAPSHOTS + "/" + hashId(id) + fileType);
+            Path p = Paths.get(SNAPSHOTS + "/" + (isHashedId ? hashId(id) : id) + fileType);
             Files.write(p, blob, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         }
         catch (Throwable e) {
@@ -180,7 +182,7 @@ public class GsonPersistenceService implements PersistenceService {
         available.acquire();
 
         try {
-            Path p = Paths.get(SNAPSHOTS + "/" + hashId(id) + fileType);
+            Path p = Paths.get(SNAPSHOTS + "/" + (isHashedId ? hashId(id) : id) + fileType);
             if (! Files.exists(p))
                 object = null;
             else
@@ -207,7 +209,7 @@ public class GsonPersistenceService implements PersistenceService {
 
         try {
             available.acquire();
-            Path p = Paths.get(SNAPSHOTS + "/" + hashId(id) + fileType);
+            Path p = Paths.get(SNAPSHOTS + "/" + (isHashedId ? hashId(id) : id) + fileType);
             if (Files.exists(p))
                 Files.delete(p);
         }

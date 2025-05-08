@@ -96,8 +96,10 @@ public class DeadLetterActor extends PubSubActor {
                         self.tell(publish, self);
                     }
 
-                    if (logDeadLetters && (!hasRegistrants) && !(dl.getMessage() instanceof ZombieMsg)) {}
+                    if (logDeadLetters && (!hasRegistrants) && !(dl.getMessage() instanceof ZombieMsg)) {
                         log.warn("Dead letter %s from %s to %s [hasRegistrants=%b]".formatted(dl.getMessage(), dl.getSender(), dl.getPath(), hasRegistrants));
+                    }
+
                 }
 
                 case _Publish pub -> parentBehavior.onMessage(pub);

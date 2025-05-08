@@ -33,7 +33,6 @@ import org.nustaq.net.TCPObjectServer;
 import org.nustaq.net.TCPObjectSocket;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
@@ -210,13 +209,12 @@ public class ActorSystem {
         ));
     }
 
-    private Guardian startGuardian(ActorRef ref)
-            throws NoSuchMethodException, InvocationTargetException, InstantiationException,
-            IllegalAccessException {
+    private Guardian startGuardian(ActorRef ref) {
 
         Actor actor = guardianRef.actor;
         ref.mailBox = new Actor.MailBox();
         ref.thread = Thread.startVirtualThread(actor);
+        ref.thread.setName("GuardianActor");
         actor.setParent(null);
         actor.setSelf(ref);
 
@@ -237,30 +235,37 @@ public class ActorSystem {
         isStopping = true;
 
         PersistentActor.setInShutdown(inShutdown);
-        context.stop(guardianRef);
 
-        try {
-            guardianRef.waitForDeath();
-        } catch (Exception e) {
-            log.warn("Stopping guardian ref resulted in exception .. ignoring");
-        }
-
+        log.info("Stopping ActorSystem: " + name + " on port " + port);
         if (null != port) {
+            log.info("Stopping server");
             try {
                 server.stop();
                 haveStopped.get(5, TimeUnit.SECONDS);
                 actorSystemConnectionManager.shutdown();
-                log.info(String.format("Actor system '%s' shut down", name));
+                log.info("Server shut down");
             }
             catch (Exception e) {
                 log.error("Could not stop server: %s".formatted(e.getMessage()));
                 e.printStackTrace();
             }
         }
+        log.info("Stopping Guardian");
+        context.stop(guardianRef);
+        try {
+            guardianRef.waitForDeath();
+            log.info("Guardian stopped");
+        } catch (Exception e) {
+            log.warn("Stopping guardian ref resulted in exception .. ignoring");
+        }
 
         isStopped = true;
-        if (null != stopping)
+
+        if (null != stopping) {
+            log.info("Running stopping()");
             stopping.run();
+        }
+        log.info("Stopped");
     }
 
     /**
@@ -329,6 +334,7 @@ public class ActorSystem {
 
                             } catch (Exception e) {
                                 log.error(String.format("Error in server(): %s", e.getMessage()));
+                                e.printStackTrace();
                             }
                         }
                     }
@@ -359,6 +365,14 @@ public class ActorSystem {
      */
     public void returnSocket(WrappedTCPObjectSocket objectSocket) {
         actorSystemConnectionManager.returnSocket(objectSocket);
+    }
+
+    /**
+     * Something has gone wrong. Try to close all connections to Actor system
+     * defined by URI.
+     */
+    public void flushPool(URI uri) throws Exception {
+        actorSystemConnectionManager.flushPool(uri);
     }
 
     private static class Guardian {

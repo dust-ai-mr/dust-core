@@ -206,20 +206,9 @@ public class ActorRef implements Serializable {
             else {
                 if (! path.contains(":"))
                     path = host + path;
-
-                WrappedTCPObjectSocket wrappedTCPObjectSocket = null;
-
                 try {
-                    TCPObjectSocket socket;
                     sentMessage.remotePath = path;
-                    wrappedTCPObjectSocket = context.system.getSocket(new URI(path));
-                    socket = wrappedTCPObjectSocket.tcpObjectSocket;
-                    // log.trace("ActorSystem sending: " + message + " to " + path + " [Remote]");
-                    socket.writeObject(sentMessage);
-                    socket.flush();
-                    //socket.getSocket().getInputStream().readAllBytes(); // Expecting app level "ACK" from server
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getSocket().getInputStream()));
-                    reader.readLine();
+                    sendMessage(sentMessage, path);
                 }
                 catch (InterruptedException ie) {
                     log.error("Could not get socket to {}: Interrupted", path);
@@ -227,11 +216,8 @@ public class ActorRef implements Serializable {
                 }
                 catch (Exception e) {
                     log.error("Could not get socket to {}: {}", path, e.getMessage());
+                    e.printStackTrace();
                     success = false;
-                }
-                finally {
-                    if (null != wrappedTCPObjectSocket)
-                        context.system.returnSocket(wrappedTCPObjectSocket);
                 }
             }
         }
@@ -241,6 +227,39 @@ public class ActorRef implements Serializable {
             success = false;
         }
         return success;
+    }
+
+    /*
+        Try to send message. Throw exception if fail
+     */
+    private void sendMessage(SentMessage sentMessage, String path) throws Exception {
+        WrappedTCPObjectSocket wrappedTCPObjectSocket = null;
+        TCPObjectSocket socket;
+        URI uri = new URI(path);
+        Exception lastException = null;
+
+        for (int i = 0; i < 10; i++) {
+            try {
+                wrappedTCPObjectSocket = context.system.getSocket(uri);
+                socket = wrappedTCPObjectSocket.tcpObjectSocket;
+                socket.writeObject(sentMessage);
+                socket.flush();
+                // Expecting app level "ACK" from server
+                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getSocket().getInputStream()));
+                reader.readLine();
+                return;
+            }
+            catch (Exception e) {
+                lastException = e;
+                context.system.flushPool(uri);
+                Thread.sleep(5000L);
+            }
+            finally {
+                if (null != wrappedTCPObjectSocket)
+                    context.system.returnSocket(wrappedTCPObjectSocket);
+            }
+        }
+        throw lastException;
     }
 
     /**

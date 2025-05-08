@@ -83,6 +83,7 @@ public class ReaperActor extends Actor {
                     client = sender;
                     reapMsg = msg;
                     if (!reapMsg.targets.isEmpty()) {
+                        log.trace("{} reaping {} targets", self.path, reapMsg.targets.size());
                         if (null != reapMsg.clz)
                             for (ActorRef t : reapMsg.targets) {
                                 t.tell(reapMsg.clz.getDeclaredConstructor().newInstance(), self);
@@ -106,6 +107,7 @@ public class ReaperActor extends Actor {
                 default -> {
                     reapMsg.response.results.put(sender, message);
                     if (reapMsg.isComplete()) {
+                        log.trace("{} reaping complete", self.path);
                         reapMsg.response.complete = true;
                         self.tell(new StopMsg(), self);
                     }
