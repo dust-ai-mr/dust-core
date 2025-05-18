@@ -53,7 +53,7 @@ public class ReapTransformServiceActor extends Actor {
                     break;
 
                 /*
-                 Warning. Common usage pattern is to invoke this Actor on the host itself. But this means self is no
+                 Warning. Common usage pattern is to invoke this Actor on the host itself. But this means self is now
                  a child of host which would result in an attempt to reap self .... so filter me out.
                  */
                 case GetChildrenMsg msg:
