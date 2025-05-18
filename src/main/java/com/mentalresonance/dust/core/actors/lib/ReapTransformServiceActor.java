@@ -8,6 +8,7 @@ import com.mentalresonance.dust.core.msgs.GetChildrenMsg;
 import com.mentalresonance.dust.core.msgs.StartMsg;
 
 import java.io.Serializable;
+import java.util.List;
 import java.util.function.Function;
 
 import static com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg.ReapResponseMsg;
@@ -51,11 +52,16 @@ public class ReapTransformServiceActor extends Actor {
                     host.tell(new GetChildrenMsg(), self);
                     break;
 
+                /*
+                 Warning. Common usage pattern is to invoke this Actor on the host itself. But this means self is no
+                 a child of host which would result in an attempt to reap self .... so filter me out.
+                 */
                 case GetChildrenMsg msg:
+                    List<ActorRef> childs = msg.getChildren().stream().filter(child -> child != self).toList();
                     actorOf(ReaperActor.props(10000L)).tell(
                         new ReaperActor.ReapMsg(
                             reapingClz,
-                            msg.getChildren(),
+                            childs,
                             ReapResponseMsg.class
                         ),
                         self
