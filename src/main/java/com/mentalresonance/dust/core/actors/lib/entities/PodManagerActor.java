@@ -29,6 +29,7 @@ import com.mentalresonance.dust.core.msgs.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -66,12 +67,18 @@ public class PodManagerActor extends PersistentActor {
     protected final ActorRef podDeadLetterRef;
 
     /**
+     * If automatically creating children via the dead letter mechanism we can define which messages
+     * will cause child creation.
+     */
+    protected List<Class<?>> acceptedMessages;
+
+    /**
      * Default PodManager creation - children will be determined by childProps
      * @param childProps props defining child to be created
      * @return {@link Props}
      */
     public static Props props(Props childProps) {
-        return Props.create(PodManagerActor.class, childProps, null, true);
+        return Props.create(PodManagerActor.class, childProps, null, true, List.of());
     }
 
     /**
@@ -82,7 +89,7 @@ public class PodManagerActor extends PersistentActor {
      * @return {@link Props}
      */
     public static Props props(Props childProps, ActorRef podDeadLetterRef) {
-        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef, true);
+        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef, true, List.of());
     }
 
     /**
@@ -93,7 +100,7 @@ public class PodManagerActor extends PersistentActor {
      * @return {@link Props}
      */
     public static Props props(Props childProps, ActorRef podDeadLetterRef, boolean notifyCreatedChild) {
-        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef, notifyCreatedChild);
+        return Props.create(PodManagerActor.class, childProps, podDeadLetterRef, notifyCreatedChild, List.of());
     }
 
     /**
@@ -102,10 +109,11 @@ public class PodManagerActor extends PersistentActor {
      * @param podDeadLetterRef ref to {@link PodDeadLetterActor}
      * @param notifyCreatedChild if true notify sender of message which created a child a CreatedChildMsg, else don't
      */
-    public PodManagerActor(Props childProps, ActorRef podDeadLetterRef, boolean notifyCreatedChild) {
+    public PodManagerActor(Props childProps, ActorRef podDeadLetterRef, boolean notifyCreatedChild, List<Class<?>> acceptedMessages) {
         this.childProps = childProps;
         this.podDeadLetterRef = podDeadLetterRef;
         this.notifyCreatedChild = notifyCreatedChild;
+        this.acceptedMessages = acceptedMessages;
     }
 
     /**
@@ -117,6 +125,7 @@ public class PodManagerActor extends PersistentActor {
         this.childProps = childProps;
         this.podDeadLetterRef = podDeadLetterRef;
         this.notifyCreatedChild = true;
+        this.acceptedMessages = List.of();
     }
 
     @Override
@@ -124,7 +133,7 @@ public class PodManagerActor extends PersistentActor {
         super.preStart();
         log.trace("Started {}. podDeadLetterRef={}", self.path, podDeadLetterRef);
         if (null != podDeadLetterRef) {
-            podDeadLetterRef.tell(new RegisterPodDeadLettersMsg(), self);
+            podDeadLetterRef.tell(new RegisterPodDeadLettersMsg(acceptedMessages), self);
         }
     }
 

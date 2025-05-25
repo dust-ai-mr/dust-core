@@ -26,15 +26,26 @@ import java.util.List;
 
 /**
  * Sent to PodDeadLettersActor to register interest in given message types
+ * An empty list means accept all messages
  */
 public  class RegisterPodDeadLettersMsg implements Serializable {
     /**
      * Messages of interest
      */
-    public final List<Class<?>> acceptedMessages = new LinkedList<>();
+    public List<Class<?>> acceptedMessages;
 
     /**
      * Constructor
      */
-    public RegisterPodDeadLettersMsg() {}
+    public RegisterPodDeadLettersMsg() {
+        this(new LinkedList<>());
+    }
+
+    /**
+     * Constructor
+     * @param acceptedMessages list of classes instances of which will be accepted
+     */
+    public RegisterPodDeadLettersMsg(List<Class<?>> acceptedMessages) {
+        this.acceptedMessages = acceptedMessages;
+    }
 }
