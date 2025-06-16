@@ -41,7 +41,7 @@ import java.util.LinkedList;
 @Slf4j
 public class ServiceManagerActor extends Actor {
 
-    final Props serviceProps;
+    protected Props serviceProps;
     final int maxWorkers;
     int currentWorkers;
 

@@ -21,11 +21,13 @@ package com.mentalresonance.dust.core.actors;
 
 import com.mentalresonance.dust.core.msgs.*;
 import com.mentalresonance.dust.core.services.PersistenceService;
+import com.mentalresonance.dust.core.utils.StringUtils;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
+import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 
 /**
@@ -59,11 +61,14 @@ public class PersistentActor extends Actor {
 
     /**
      * Unique id - can be overridden. This is used as the primary database key for the persisted state. The default
-     * implementation returns the Actor's path.
+     * implementation returns the hash of Actor's path (the raw path would not be compatible with
+     * file-based persistence
+     *
      * @return - the unique Id.
      */
-    protected String persistenceId() {
-        return self.path;
+    protected String persistenceId() throws NoSuchAlgorithmException {
+
+        return StringUtils.hash(self.path, "MD5");
     }
     /**
      * How snapshots are saved. The default is to use the persistence service defined in ActorSystem
