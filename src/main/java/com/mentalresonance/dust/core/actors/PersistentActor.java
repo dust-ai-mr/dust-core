@@ -58,6 +58,18 @@ public class PersistentActor extends Actor {
      */
     public PersistentActor() {}
 
+    /**
+     * An Actor could be stopping because
+     * - It was sent a PoisonPill or context.stop()ed
+     * - It threw an exception and the strategy was to stop
+     * - The ActorSystem is being shut down.
+     *
+     * As a persistent Actor if we are in case 1 we probably want to destroy our persisted state, but not do so in
+     * the other cases. So case one is a hardStop.
+     *
+     * @return true if the Actor was deliberately stopped
+     */
+    protected boolean isHardStop() { return ( !( inShutdown || self.isException != null ) ); }
 
     /**
      * Unique id - can be overridden. This is used as the primary database key for the persisted state. The default
