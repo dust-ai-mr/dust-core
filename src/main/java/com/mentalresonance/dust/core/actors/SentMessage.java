@@ -48,7 +48,7 @@ public class SentMessage implements Serializable {
      * @param sender who claims he is sending it
      */
     public SentMessage(Serializable message, ActorRef sender) {
-        this.message = message;
+        this.message = message;            // Someone is trying to stop us. So interrupt us again to actually start the stopping process
         this.sender = sender;
     }
 }
