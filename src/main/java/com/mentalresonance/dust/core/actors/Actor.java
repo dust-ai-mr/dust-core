@@ -423,6 +423,9 @@ public class Actor implements Runnable {
                             Collection<ActorRef> flock;
 
                             log.warn(String.format("%s: got error %s from %s", self, msg.thrown.getMessage(), sender));
+                            if(debug)
+                                msg.thrown.printStackTrace();
+
                             log.info(supervisor.toString());
 
                             if (supervisionStrategy.getMode() == MODE_ALL_FOR_ONE)
