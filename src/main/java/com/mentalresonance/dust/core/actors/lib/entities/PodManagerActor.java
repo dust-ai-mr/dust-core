@@ -26,6 +26,8 @@ import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.actors.lib.entities.msgs.DeadLetterProxyMsg;
 import com.mentalresonance.dust.core.actors.lib.entities.msgs.RegisterPodDeadLettersMsg;
 import com.mentalresonance.dust.core.msgs.*;
+import com.mentalresonance.dust.core.system.exceptions.ActorInitialisationException;
+import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -181,17 +183,32 @@ public class PodManagerActor extends PersistentActor {
                     }
                     else {
                         ActorRef child = actorOf(childProps, name);
-                        watch(child);
-                        kids.put(name, true);
-                        if (null != msg.getMsg()) {
-                            child.tell(msg.getMsg(), sender);
-                        }
-                        saveSnapshot(kids);
-                        if (notifyCreatedChild && null != sender) {
-                            sender.tell(new CreatedChildMsg(name), self);
-                        }
-                        log.trace("{} created child: {}", self.path, name);
+                        if (null != child) {
+                            watch(child);
+                            kids.put(name, true);
+                            if (null != msg.getMsg()) {
+                                child.tell(msg.getMsg(), sender);
+                            }
+                            saveSnapshot(kids);
+                            if (notifyCreatedChild && null != sender) {
+                                sender.tell(new CreatedChildMsg(name), self);
+                            }
+                            log.trace("{} created child: {}", self.path, name);
+                        } else
+                            log.error("{}: Unable to create child: {}", self.path, childProps.toString());
                     }
+                }
+                case ActorInitialisationException msg -> {
+                    /*
+                      Child was instantiated but failed initialization (e.g. persistent Actor)
+                      Forget it
+                     */
+                    log.error("{}: ActorInitialisationException {}", self.path, msg.getCause().getMessage());
+                    unWatch(sender);
+                    kids.remove(sender.name);
+                }
+                case ActorInstantiationException msg -> {
+                    log.error("{}: ActorInstantiationException: {}", self.path, msg.getMessage());
                 }
                 case ChildExceptionMsg msg -> {
                     log.error("{}: ChildException {}", self.path, msg.getException().getMessage());

@@ -12,16 +12,14 @@ repositories {
     mavenLocal()
     mavenCentral()
     // Needed to get spock snapshot below
-    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+    maven { url 'https://central.sonatype.com/artifact/org.spockframework/spock-core' }
 }
 
 dependencies {
     // This version for Java 21
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
-    // This version for Java 21
-    testImplementation platform("org.spockframework:spock-bom:2.4-groovy-4.0-SNAPSHOT")
-    testImplementation 'org.spockframework:spock-core'
+    testImplementation 'org.spockframework:spock-core:2.4-M7-groovy-4.0'
     testImplementation 'org.projectlombok:lombok:1.18.30'
     testImplementation 'org.slf4j:slf4j-simple:2.0.7'
     // This version for Java 21

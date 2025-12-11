@@ -21,6 +21,7 @@ package com.mentalresonance.dust.core.actors;
 
 import com.mentalresonance.dust.core.msgs.*;
 import com.mentalresonance.dust.core.services.PersistenceService;
+import com.mentalresonance.dust.core.system.exceptions.ActorInitialisationException;
 import com.mentalresonance.dust.core.utils.StringUtils;
 import lombok.Getter;
 import lombok.Setter;
@@ -159,12 +160,18 @@ public class PersistentActor extends Actor {
                     persistenceService.read(persistenceId(), clz);
 
             recoveryBehavior().onMessage(new SnapshotMsg(state));
+            self.lifecycle = ActorRef.LC_RECOVERED;
+            super.run();
         }
         catch (Exception e) {
-            throw new RuntimeException(e);
+            /*
+               I cannot crate myself so tell my parent and then drop off end of thread.
+               Note we do not wrap this in a _Throwable since our condition is different
+               from the usual exception ... we are not sat at our mailbox waiting to see if we will
+               restarted etc. So this is regarded as a HARD fail ... our parent has to decide what to do.
+             */
+            parent.tell(new ActorInitialisationException(e), self);
         }
-        self.lifecycle = ActorRef.LC_RECOVERED;
-        super.run();
     }
     /**
      * The behavior which defines state recovery. This is the behavior when a PersistentActor is started and it

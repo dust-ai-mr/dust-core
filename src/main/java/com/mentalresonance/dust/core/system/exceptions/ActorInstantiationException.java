@@ -19,12 +19,17 @@
 
 package com.mentalresonance.dust.core.system.exceptions;
 
+import lombok.Getter;
+
 /**
  * Thrown when Actor Creation goes awry
  *
  * @author alanl
  */
-public class ActorInstantiationException extends Exception {
+@Getter
+public class ActorInstantiationException extends RuntimeException {
+
+    Throwable cause = null;
     /**
      * Constructor
      */
@@ -36,5 +41,17 @@ public class ActorInstantiationException extends Exception {
      */
     public ActorInstantiationException(String msg) {
         super(msg);
+    }
+    /**
+     * Constructor
+     * @param t - underlying cause
+     */
+    public ActorInstantiationException(Throwable t) {
+        cause = t;
+    }
+
+    @Override
+    public String getMessage() {
+        return cause != null ? cause.getMessage() : super.getMessage();
     }
 }

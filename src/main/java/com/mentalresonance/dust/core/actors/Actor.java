@@ -821,8 +821,12 @@ public class Actor implements Runnable {
         }
         catch (Exception e) {
             log.error("Could not create Actor {} error: {}", props.actorClass, e.getMessage());
-            throw new ActorInstantiationException(e.getMessage());
+            /*
+               I cannot create child so tell me what went wrong..
+             */
+            self.tell(new ActorInstantiationException(e), null);
         }
+        return null;
     }
 
     Actor createInstanceWithParameters(Class<?> actorClass, Object[] args) throws Exception {

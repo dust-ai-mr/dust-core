@@ -6,6 +6,7 @@ import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.GetChildrenMsg;
 import com.mentalresonance.dust.core.msgs.StartMsg;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
 import java.util.List;
@@ -18,11 +19,13 @@ import static com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg.ReapR
  * and send that off to a client as though it came from my parent then stop. Very useful e.g. getting the
  * state of a PodManager's children and preparing that state for further delivery
  */
+@Slf4j
 public class ReapTransformServiceActor extends Actor {
 
     ActorRef host, client;
     Class<? extends Serializable> reapingClz;
     Function<Object, Serializable> transform;
+    long timeoutMs;
 
     /**
      * @param host - parent of children to whom we send the reapingMsg
@@ -31,17 +34,41 @@ public class ReapTransformServiceActor extends Actor {
      * @param transform - { ReapResponseMsg -> ... } value is sent to client
      * @return Props
      */
-    public static Props props(ActorRef host, ActorRef client,
-                                Class<? extends Serializable> reapingClz, Function<Object, Serializable> transform) {
-        return Props.create(ReapTransformServiceActor.class, host, client, reapingClz, transform);
+    public static Props props(ActorRef host, ActorRef client, Class<? extends Serializable> reapingClz,
+                              Function<Object, Serializable> transform) {
+        return Props.create(ReapTransformServiceActor.class, host, client, reapingClz, transform, 10000L);
     }
 
-    public ReapTransformServiceActor(ActorRef host, ActorRef client,
-                                 Class<? extends Serializable> reapingClz, Function<Object, Serializable> transform) {
+    /**
+     * @param host - parent of children to whom we send the reapingMsg
+     * @param client - requester - will get the result
+     * @param reapingClz - class of message to be sent to children. Should have a default no arg constructor
+     * @param transform - { ReapResponseMsg -> ... } value is sent to client
+     * @param timeoutMs - dead man's handle timeout - default is 10 secs
+     * @return Props
+     */
+    public static Props props(ActorRef host, ActorRef client, Class<? extends Serializable> reapingClz,
+                              Function<Object, Serializable> transform, long timeoutMs) {
+        return Props.create(ReapTransformServiceActor.class, host, client, reapingClz, transform, timeoutMs);
+    }
+
+    public ReapTransformServiceActor(ActorRef host, ActorRef client, Class<? extends Serializable> reapingClz,
+                               Function<Object, Serializable> transform, long timeoutMs) {
         this.host = host;
         this.client = client;
         this.reapingClz = reapingClz;
         this.transform = transform;
+        this.timeoutMs = timeoutMs;
+    }
+
+    public ReapTransformServiceActor(ActorRef host, ActorRef client, Class<? extends Serializable> reapingClz,
+                                     Function<Object, Serializable> transform) {
+        this(host, client, reapingClz, transform, 10000L);
+    }
+
+    @Override
+    protected void dying() {
+        log.trace("{}: dying", self.path);
     }
 
     @Override
@@ -58,7 +85,7 @@ public class ReapTransformServiceActor extends Actor {
                  */
                 case GetChildrenMsg msg:
                     List<ActorRef> childs = msg.getChildren().stream().filter(child -> child != self).toList();
-                    actorOf(ReaperActor.props(10000L)).tell(
+                    actorOf(ReaperActor.props(timeoutMs)).tell(
                         new ReaperActor.ReapMsg(
                             reapingClz,
                             childs,

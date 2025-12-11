@@ -1,6 +1,6 @@
 /*
  *
- *  Copyright 2024-Present Alan Littleford
+ *  Copyright 2024-2025 Alan Littleford
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,23 +17,12 @@
  *
  */
 
-package com.mentalresonance.dust.core.system.exceptions;
+package com.mentalresonance.dust.core.msgs;
+
+import java.io.Serializable;
 
 /**
- * Can be thrown during initialization
- *
- * @author alanl
+ * Sent to any remaining subscribers when a PubSubActor is stopping
  */
-public class ActorInitialisationException extends ActorInstantiationException {
-    /**
-     * Constructor
-     * @param msg message
-     */
-    public ActorInitialisationException(String msg) {
-        super(msg);
-    }
-
-    public ActorInitialisationException(Throwable t) {
-        super(t);
-    }
+public class PubSubStoppingMsg implements Serializable {
 }

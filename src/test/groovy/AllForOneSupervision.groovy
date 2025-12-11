@@ -48,7 +48,7 @@ class AllForOneSupervision extends Specification {
 
 		@Override
 		ActorBehavior createBehavior() {
-			(messsage) -> {
+			(Serializable messsage) -> {
 				switch(messsage)
 				{
 					case ChildExceptionMsg -> {

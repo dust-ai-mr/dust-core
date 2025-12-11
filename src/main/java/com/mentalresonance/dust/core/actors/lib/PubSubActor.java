@@ -24,6 +24,7 @@ import com.mentalresonance.dust.core.actors.ActorBehavior;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.PubSubMsg;
+import com.mentalresonance.dust.core.msgs.PubSubStoppingMsg;
 import com.mentalresonance.dust.core.msgs.Terminated;
 import lombok.Getter;
 import lombok.Setter;
@@ -61,12 +62,24 @@ public class PubSubActor extends Actor {
     public static Props props() {
         return Props.create(PubSubActor.class);
     }
-
     /**
      * Maps fully qualified class name of message of interest to maps of registrants for that class.
      * Registrants are a map of their Actor Path -> ActorRef
      */
     final protected HashMap<String, HashMap<String, ActorRef>> subs = new HashMap<String, HashMap<String, ActorRef>>();
+
+    /**
+     * If we are stopping inform any remaining subscribers
+     */
+    @Override
+    protected void postStop() {
+        subs.values().forEach(clients -> {
+            clients.values().forEach(client -> {
+                client.tell(new PubSubStoppingMsg(), self);
+            });
+        });
+
+    }
 
     /**
      * Default behavior. Handle {@link PubSubMsg}s by updating subs map. On receipt of a message whose
