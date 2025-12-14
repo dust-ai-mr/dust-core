@@ -995,6 +995,15 @@ public class Actor implements Runnable {
     }
 
     /**
+     * Convenience - sometimes want to run on a different thread - e.g. Deleting snapshot on postStop since
+     * the Actor thread may stop (via interrupt)
+     * @param cl
+     */
+    protected void vStart(Runnable cl) {
+        Thread.ofVirtual().start(cl);
+    }
+
+    /**
      * Time saver for self.tell(.., self)
      * @param message to send
      * @return true if no error in send, else false
