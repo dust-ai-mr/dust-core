@@ -229,6 +229,9 @@ public class ActorRef implements Serializable {
         return success;
     }
 
+    public boolean isRemote() {
+        return null == mailBox;
+    }
     /*
         Try to send message. Throw exception if fail
      */

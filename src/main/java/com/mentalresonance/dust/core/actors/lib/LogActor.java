@@ -50,7 +50,7 @@ public class LogActor extends Actor {
      */
     @Override
     protected ActorBehavior createBehavior() {
-        return message -> { log.info(String.format("%s got message %s from %s", self.path, message, sender)); };
+        return message -> { log.info(String.format("%s got message %s [%s] from %s", self.path, message, message.getClass(), sender)); };
     }
 
 }

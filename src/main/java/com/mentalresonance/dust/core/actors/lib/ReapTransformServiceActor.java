@@ -67,11 +67,6 @@ public class ReapTransformServiceActor extends Actor {
     }
 
     @Override
-    protected void dying() {
-        log.trace("{}: dying", self.path);
-    }
-
-    @Override
     protected ActorBehavior createBehavior() {
         return (Serializable message) -> {
             switch(message) {

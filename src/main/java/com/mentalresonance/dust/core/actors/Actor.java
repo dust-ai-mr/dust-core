@@ -708,7 +708,7 @@ public class Actor implements Runnable {
      * @return a Cancellable
      */
     protected Cancellable scheduleIn(Serializable msg, Long millis) {
-        return scheduleIn(msg, millis, self);
+        return scheduleIn(msg, millis, self, self);
     }
 
     /**
@@ -719,24 +719,7 @@ public class Actor implements Runnable {
      * @return a Cancellable
      */
     protected Cancellable scheduleIn(Serializable msg, Long millis, ActorRef target) {
-        if (null == target) {
-            log.error("Scheduling to a null target");
-            return null;
-        }
-        return new Cancellable(Thread.startVirtualThread(
-                () -> {
-                    try {
-                        Thread.sleep(millis);
-                        target.tell(msg, self);
-                    }
-                    catch (InterruptedException e) { // Cancel !!
-
-                    }
-                    catch (Throwable t) {
-                        log.warn(t.getMessage());
-                    }
-                }
-        ));
+        return scheduleIn(msg, millis, target, self);
     }
 
     /**

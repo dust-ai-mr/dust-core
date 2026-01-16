@@ -92,6 +92,11 @@ public class ReaperActor extends Actor {
                             for (ActorRef t : reapMsg.targets) {
                                 t.tell(reapMsg.copyableMsg.copy(), self);
                             }
+                        else if (null != reapMsg.msg) {
+                            for (ActorRef t : reapMsg.targets) {
+                                t.tell(reapMsg.msg, self);
+                            }
+                        }
                         else
                             self.tell(new StopMsg(), self);
                     }
@@ -168,12 +173,28 @@ public class ReaperActor extends Actor {
         CopyableMsg copyableMsg = null;
 
         /**
+         * Alternative. Just send this Message to the targets. Targets should be relied upon not to mutate it.
+         */
+        Serializable msg = null;
+
+        /**
          * Constructor
          * @param clz send new instances of this class
          * @param targets to these targets
          */
         public ReapMsg(Class<? extends Serializable> clz, List<ActorRef> targets) {
             this.clz = clz;
+            this.targets = targets;
+            this.response = new ReapResponseMsg();
+        }
+
+        /**
+         * Constructor
+         * @param msg send
+         * @param targets to these targets
+         */
+        public ReapMsg(Serializable msg, List<ActorRef> targets) {
+            this.msg = msg;
             this.targets = targets;
             this.response = new ReapResponseMsg();
         }
@@ -194,6 +215,25 @@ public class ReaperActor extends Actor {
                 List<ActorRef> targets,
                 Class<? extends ReapResponseMsg> respClz) throws NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException {
             this.clz = clz;
+            this.targets = targets;
+            this.response = respClz.getDeclaredConstructor().newInstance();
+        }
+
+        /**
+         * Construct ReapMsg with a specific Response class (which should extend ReapResponseMsg)
+         * @param msg message to be  sent
+         * @param targets to these Actors
+         * @param respClz custom ReapResponseMsg class
+         * @throws NoSuchMethodException on error
+         * @throws InstantiationException on error
+         * @throws IllegalAccessException on error
+         * @throws InvocationTargetException on error
+         */
+        public ReapMsg(
+            Serializable msg,
+            List<ActorRef> targets,
+            Class<? extends ReapResponseMsg> respClz) throws NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException {
+            this.msg = msg;
             this.targets = targets;
             this.response = respClz.getDeclaredConstructor().newInstance();
         }

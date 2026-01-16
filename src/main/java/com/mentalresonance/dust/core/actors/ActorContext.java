@@ -176,7 +176,7 @@ public class ActorContext {
      */
 
     public ActorRef actorSelection(String path) throws InterruptedException,  ActorSelectionException {
-        ActorRef ref = null;
+        ActorRef ref;
 
         try {
             if (! path.endsWith("/"))
