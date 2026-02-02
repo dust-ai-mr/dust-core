@@ -132,7 +132,7 @@ public class PodDeadLetterActor extends Actor {
                             }
                             else {
                                 if (!(dl.getMessage() instanceof ZombieMsg)) {
-                                    log.warn("Unhandled Dead letter to:{} from:{} msg:{}. Is {} registered ?",
+                                    log.warn("Unhandled Dead letter\n   to:{} \n   from:{}\n   msg:{}.\nIs {} registered?",
                                             recipientPath,
                                             senderPath,
                                             dl,

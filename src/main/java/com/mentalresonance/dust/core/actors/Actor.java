@@ -553,7 +553,6 @@ public class Actor implements Runnable {
          */
         if (self.lifecycle != ActorRef.LC_RESTART)
         {
-            watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
 
             try {
                 postStop();
@@ -571,6 +570,11 @@ public class Actor implements Runnable {
             if (null != parent) {
                 parent.tell(new _Stopped(), self);
             }
+            /* Do this last so parent will know I am stopped in case a watcher wants to restart me -
+               otherwise will get a ChildExists exception so I will not get restarted. Basically a race condition
+               between parent and watcher ...
+             */
+            watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
         }
         cancelDeadMansHandle();
         // log.trace("{} stopped", self.path);
