@@ -394,8 +394,16 @@ public class Actor implements Runnable {
                             self.lifecycle = ActorRef.LC_STOP;
                             startStopping();
                         }
-
-                        case DeleteChildMsg msg -> context.stop(actorSelection("./" + msg.getName()).getRef());
+                        /*
+                         * Child might not exist
+                         */
+                        case DeleteChildMsg msg -> {
+                                try {
+                                    context.stop(actorSelection("./" + msg.getName()).getRef());
+                                } catch (Exception e) {
+                                    log.error("{}: failed to delete child {}: {}", self.path, msg.getName(), e.getMessage());
+                                }
+                            }
 
                         /*
                          * Support actorOf in ActorContext.
@@ -1041,6 +1049,11 @@ public class Actor implements Runnable {
         final Serializable message;
         public  _ChildProxyMsg(Serializable msg) {
             this.message = msg;
+        }
+
+        @Override
+        public String toString() {
+            return "_ChildProxyMsg { " + "message=" + message + " }";
         }
     }
 

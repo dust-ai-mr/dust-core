@@ -19,10 +19,9 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import java.io.Serializable;
-
 /**
- * Sent to any remaining subscribers when a PubSubActor is stopping
+ * Sent to any remaining subscribers when a PubSubActor is stopping. Make this a ZombieMsg since often the client
+ * of a PubSub is in the parent chain
  */
-public class PubSubStoppingMsg implements Serializable {
+public class PubSubStoppingMsg implements ZombieMsg {
 }

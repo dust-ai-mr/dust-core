@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -68,6 +69,9 @@ public class ReaperActor extends Actor {
     protected void dying() {
         log.warn("Reaper {} is dying", self.path);
         reapMsg.response.complete = false;
+        reapMsg.response.failedTargets.addAll(
+            reapMsg.targets.stream().filter(t -> !reapMsg.response.results.containsKey(t)).toList()
+        );
         client.tell(reapMsg.response, null);
     }
 
@@ -137,6 +141,16 @@ public class ReaperActor extends Actor {
             @Getter
             final
             HashMap<ActorRef, Object> results = new HashMap<>();
+
+            /**
+             * If the response is not complete the no-shows in the targets list are
+             * put here. NOTE: this assumes that the Actor sender of the completion message was the
+             * same as the target Actor. If not then you'll end up with all of targets in here, which
+             * is probably not what you want.
+             */
+            @Getter
+            final
+            List<ActorRef> failedTargets = new LinkedList<>();
 
             /**
              * Did Reaper complete successfully with all results or did handle drop

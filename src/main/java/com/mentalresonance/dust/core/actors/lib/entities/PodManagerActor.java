@@ -19,10 +19,7 @@
 
 package com.mentalresonance.dust.core.actors.lib.entities;
 
-import com.mentalresonance.dust.core.actors.ActorBehavior;
-import com.mentalresonance.dust.core.actors.ActorRef;
-import com.mentalresonance.dust.core.actors.PersistentActor;
-import com.mentalresonance.dust.core.actors.Props;
+import com.mentalresonance.dust.core.actors.*;
 import com.mentalresonance.dust.core.actors.lib.entities.msgs.DeadLetterProxyMsg;
 import com.mentalresonance.dust.core.actors.lib.entities.msgs.RegisterPodDeadLettersMsg;
 import com.mentalresonance.dust.core.msgs.*;
@@ -30,6 +27,7 @@ import com.mentalresonance.dust.core.system.exceptions.ActorInitialisationExcept
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
@@ -176,6 +174,15 @@ public class PodManagerActor extends PersistentActor {
                     kids.remove(sender.name);
                     saveSnapshot(kids);
                 }
+                /*
+                    Used to force the issue. Send the child a Poison pill (it may not exist) but remove it manually
+                    from my children.
+                 */
+                case DeleteChildMsg msg -> {
+                    kids.remove(msg.getName());
+                    handleMsg(msg);  // Will actually try to kill the child - which may or may not exist
+                    saveSnapshot(kids);
+                }
                 case CreateChildMsg msg -> {
                     String name = msg.getName();
                     if (kids.containsKey(name)) {
@@ -223,8 +230,12 @@ public class PodManagerActor extends PersistentActor {
                 // Acknowledgement of registration with a PodDeadLetterActor - ignore
                 case RegisterPodDeadLettersMsg ignored -> {}
 
-                default -> super.createBehavior().onMessage(message);
+                default -> handleMsg(message);
             }
         };
+    }
+
+    private void handleMsg(Serializable message) throws Exception {
+        super.createBehavior().onMessage(message);
     }
 }
