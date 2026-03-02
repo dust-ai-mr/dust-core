@@ -395,15 +395,28 @@ public class Actor implements Runnable {
                             startStopping();
                         }
                         /*
-                         * Child might not exist
+                         * Force removal of a child. We have to be ultra-careful here because
+                         * the child may be dead.
                          */
                         case DeleteChildMsg msg -> {
-                                try {
+                            try {
+                                ActorRef child = actorSelection("./" + msg.getName()).getRef();
+                                if (! child.isDeadLetter) {
                                     context.stop(actorSelection("./" + msg.getName()).getRef());
-                                } catch (Exception e) {
-                                    log.error("{}: failed to delete child {}: {}", self.path, msg.getName(), e.getMessage());
                                 }
+                                else {
+                                    children.remove(msg.getName());
+                                }
+                            } catch (Exception e) {
+                                /*
+                                   A zombie child is a child someone (perhaps me) thinks I have but I don't.
+                                   I may be holding an expired ActorRef in this case, so remove it as a child
+                                   if I have it.
+                                 */
+                                log.error("{}: failed to delete child {}: {} - zombie?", self.path, msg.getName(), e.getMessage());
+                                children.remove(msg.getName());
                             }
+                        }
 
                         /*
                          * Support actorOf in ActorContext.

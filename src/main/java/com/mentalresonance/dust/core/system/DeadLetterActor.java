@@ -104,6 +104,8 @@ public class DeadLetterActor extends PubSubActor {
 
                 case _Publish pub -> parentBehavior.onMessage(pub);
 
+                case _NoSubscriptions ignored -> {}
+
                 default ->  log.error(String.format("Dead Letter actor got message %s", message));
 
             }
