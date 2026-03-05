@@ -80,10 +80,11 @@ public class CompletionServiceActor extends Actor {
     @Override
     protected ActorBehavior createBehavior() {
         return message -> {
-            if (Objects.requireNonNull(message) instanceof CompletionRequestMsg msg) {
-                log.trace("Received CompletionRequestMsg: {} from {} to {}", msg, sender, msg.target);
+            if (Objects.requireNonNull(message) instanceof CompletionRequestMsg msg) {;
                 Serializable passThrough = msg.getPassThroughMsg();
-                future = msg.getFuture();
+                log.trace("{} Received CompletionRequestMsg: {} from {} to {}", self.path, passThrough, sender, msg.target);
+
+                future = (CompletableFuture) msg.getFuture();
                 msg.setSender(self);
                 if (null != passThrough) {
                     // If it is returnable (e.g. returned by a pipe) we want to come back to me
@@ -93,8 +94,9 @@ public class CompletionServiceActor extends Actor {
                     msg.target.tell(passThrough, self);
                 } else
                     msg.target.tell(msg, self);
-            } else {
-                log.trace("Got response from {}. Completing.", sender);
+            }
+            else {
+                log.trace("Got response {} from {}. Completing.", message, sender);
                 future.complete(message);
                 stopSelf();
             }

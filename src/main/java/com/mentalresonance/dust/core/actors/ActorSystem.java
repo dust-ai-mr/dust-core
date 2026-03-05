@@ -55,6 +55,9 @@ public class ActorSystem {
     final
     String name;
 
+    final
+    String host;
+
     final int systemLength; // For trimming system off path
 
     @Getter
@@ -158,12 +161,38 @@ public class ActorSystem {
             throws InvocationTargetException, NoSuchMethodException, InstantiationException,
             IllegalAccessException, ActorInstantiationException {
 
+        this.host = "localhost";
         this.name = name;
         this.port = port;
         systemLength = name.length() + 1;
         actorSystemConnectionManager = new ActorSystemConnectionManager();
         init(logDeadLetters);
-        log.info("Started ActorSystem: " + name + " on port " + port);
+        log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
+    }
+
+    /**
+     * Create remoting Actor system with name on port
+     * @param host           host address for remoting
+     * @param name           unique (on this host) actor name
+     * @param port           on this port
+     * @param logDeadLetters if true log dead letters
+     * @throws InvocationTargetException creating core service Actors
+     * @throws NoSuchMethodException creating core service Actors
+     * @throws InstantiationException creating core service Actors
+     * @throws IllegalAccessException creating core service Actors
+     * @throws ActorInstantiationException creating core service Actors
+     */
+    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters)
+        throws InvocationTargetException, NoSuchMethodException, InstantiationException,
+        IllegalAccessException, ActorInstantiationException {
+
+        this.host = host;
+        this.name = name;
+        this.port = port;
+        systemLength = name.length() + 1;
+        actorSystemConnectionManager = new ActorSystemConnectionManager();
+        init(logDeadLetters);
+        log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
     }
 
     /**
@@ -191,10 +220,10 @@ public class ActorSystem {
 
         if (null != port) {
             try {
-                context.hostContext = String.format("dust://localhost:%d/%s", port, name);
+                context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
                 haveStopped = runServer(port, actorSystemConnectionManager);
             } catch (IOException e) {
-                log.error(String.format("Cannot start server on port %d", port));
+                log.error(String.format("Cannot start server on host %s port %d", host, port));
             }
         }
 
@@ -319,7 +348,7 @@ public class ActorSystem {
                                 ActorRef sender = (null != msg.sender) ? msg.sender.remotify() : null;
                                 ActorRef target = context.actorSelection(path);
 
-                                // log.info("ActorSystem received: " + msg.getMessage() + " from " + sender + " to be sent to " + target);
+                                log.trace("ActorSystem received: " + msg.message + " from " + sender + " to be sent to " + target);
                                 if (null == target) {
                                     target = context.getDeadLetterActor();
                                     target.setIsDeadLetter(true);
@@ -333,13 +362,12 @@ public class ActorSystem {
                                 writer.flush();
 
                             } catch (Exception e) {
-                                log.error(String.format("Error in server(): %s", e.getMessage()));
-                                e.printStackTrace();
+                                log.error("Error in server(): {}", e.getMessage());
                             }
                         }
                     }
                 } catch (Exception e) {
-                    // log.error(String.format("Error in outer server(): %s", e.getMessage()));
+                    log.error("Error in outer server(): {}", e.getMessage());
                 }
             }
         });
