@@ -30,7 +30,7 @@ class RemotePingPong extends Specification {
 			ping = system1.context.actorSelection("dust://localhost:9098/RemotePingPong/user/ping3")
 			pong = system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong3")
 			ping.tell(new PingMsg(), pong)
-			sleep(30000L) // Adjust ??
+			sleep(50000L) // Adjust ??
 
 			system1.stop()
 			system2.stop()
