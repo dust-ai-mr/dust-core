@@ -22,17 +22,16 @@ package com.mentalresonance.dust.core.actors;
 import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
+import com.mentalresonance.dust.core.net.TCPObjectSocket;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.nustaq.net.TCPObjectSocket;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import static com.mentalresonance.dust.core.system.ActorSystemConnectionManager.WrappedTCPObjectSocket;
+import static com.mentalresonance.dust.core.net.ActorSystemConnectionManager.WrappedTCPObjectSocket;
 
 
 /**
@@ -245,14 +244,18 @@ public class ActorRef implements Serializable {
             try {
                 wrappedTCPObjectSocket = context.system.getSocket(uri);
                 socket = wrappedTCPObjectSocket.tcpObjectSocket;
-                socket.writeObject(sentMessage);
-                socket.flush();
+                socket.send(sentMessage);
                 // Expecting app level "ACK" from server
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getSocket().getInputStream()));
-                reader.readLine();
+                socket.receive();
                 return;
             }
+            catch (InterruptedException ie) {
+                log.error("Could not send message to {}: Interrupted", path);
+                lastException = ie;
+                i = 10;
+            }
             catch (Exception e) {
+                log.error("Could not send message to {}: {}", path, e);
                 lastException = e;
                 context.system.flushPool(uri);
                 Thread.sleep(5000L);
