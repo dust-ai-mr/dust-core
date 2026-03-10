@@ -334,8 +334,8 @@ public class Actor implements Runnable {
         {
             try {
                 sentMessage = self.mailBox.queue.take();
-                sender = sentMessage.sender;
-                log.trace("{} got message {} from {}", self.path, sentMessage.message, sender);
+                sender = sentMessage.sender();
+                log.trace("{} got message {} from {}", self.path, sentMessage.message(), sender);
             }
             /*
              * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
@@ -362,7 +362,7 @@ public class Actor implements Runnable {
              * a context.stop()
              */
             try {
-                Serializable sentMsg = sentMessage.message;
+                Serializable sentMsg = sentMessage.message();
 
                 if (null == sentMsg) {
                     log.warn("%s sent null message to %s. Ignored".formatted(sender.toString(), self.path));
@@ -490,10 +490,10 @@ public class Actor implements Runnable {
 
                         default -> {
                             if (null != behavior) {
-                                behavior.onMessage(sentMessage.message);
+                                behavior.onMessage(sentMessage.message());
                             }
                             else {
-                                log.warn(String.format("%s: cannot handle message %s from %s", self.path, sentMessage.message, sender));
+                                log.warn(String.format("%s: cannot handle message %s from %s", self.path, sentMessage.message(), sender));
                             }
                         }
                     }
@@ -508,7 +508,7 @@ public class Actor implements Runnable {
                 self.isException = t;
 
                 try { // Sometimes toString()ing the message can throw an Exception !!
-                    log.error(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
+                    log.error(self.path + ": Exception when processing: " + sentMessage.message() + " :" + t.getMessage());
                     if (debug) t.printStackTrace();
                 }
                 catch (Exception e) {

@@ -26,29 +26,14 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-public class SentMessage implements Serializable {
-    /**
-     * The message to be delivered
-     */
-    public final Serializable message;
+public record SentMessage(
+    Serializable message,
+    ActorRef sender,
+    String remotePath // Moved to constructor for Record compliance
+) implements Serializable {
 
-    /**
-     * The target path if remote else null
-     */
-    public String remotePath = null;
-
-    /**
-     * The sender of the message
-     */
-    public final ActorRef sender;
-
-    /**
-     * Constructor
-     * @param message being sent
-     * @param sender who claims he is sending it
-     */
+    // Canonical constructor for default values
     public SentMessage(Serializable message, ActorRef sender) {
-        this.message = message;            // Someone is trying to stop us. So interrupt us again to actually start the stopping process
-        this.sender = sender;
+        this(message, sender, null);
     }
 }

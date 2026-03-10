@@ -20,7 +20,6 @@
 package com.mentalresonance.dust.core.actors;
 
 import com.mentalresonance.dust.core.net.TCPObjectServer;
-import com.mentalresonance.dust.core.net.TCPObjectSocket;
 import com.mentalresonance.dust.core.services.PersistenceService;
 import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.net.ActorSystemConnectionManager.WrappedTCPObjectSocket;
@@ -86,6 +85,7 @@ public class ActorSystem {
      * (e.g. during tests) so we use isStopped to determined that we do actually think we have stopped
      * and do not try again.
      */
+    @Getter
     private boolean isStopped = false;
 
     /**
@@ -255,7 +255,7 @@ public class ActorSystem {
      * @param inShutdown flag to indicate we are in clean shutdown. PersistentActors should not delete their state. If
      * false then they probably will delete their state
      */
-    public void stop(boolean inShutdown) {
+    public boolean stop(boolean inShutdown) {
 
         isStopping = true;
 
@@ -291,12 +291,13 @@ public class ActorSystem {
             stopping.run();
         }
         log.info("Stopped");
+        return true;
     }
 
     /**
      * Default stop. inShutdown is true so Actors will keep their state for next time
      */
-    public void stop() { stop(true); }
+    public boolean stop() { return stop(true); }
 
     /**
      * Run server on port with context /<actor-system-name>
@@ -310,7 +311,8 @@ public class ActorSystem {
         int port,
         ActorSystemConnectionManager actorSystemConnectionManager,
         ActorSystem actorSystem
-    ) throws IOException {
+    ) throws IOException
+    {
         CompletableFuture<Boolean> haveStopped = new CompletableFuture<>();
 
         server = new TCPObjectServer(
@@ -327,13 +329,12 @@ public class ActorSystem {
     public void connectionAccepted(SentMessage msg, TCPObjectServer server) {
         Object o = null;
         try {
-
             try {
                 /*
                  * path is /system/...
                  */
-                String path = new URI(msg.remotePath).getPath().substring(systemLength);
-                ActorRef sender = (null != msg.sender) ? msg.sender.remotify() : null;
+                String path = new URI(msg.remotePath()).getPath().substring(systemLength);
+                ActorRef sender = (null != msg.sender()) ? msg.sender().remotify() : null;
                 ActorRef target = context.actorSelection(path);
 
                 if (null == target) {
@@ -343,7 +344,7 @@ public class ActorSystem {
                 if (null != sender) {
                     sender = context.actorSelection(sender.path);
                 }
-                target.tell(msg.message, sender);
+                target.tell(msg.message(), sender);
             }
             catch (Exception e) {
                 log.error("Error in server(): {}", e.getMessage());

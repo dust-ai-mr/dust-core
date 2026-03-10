@@ -43,7 +43,7 @@ class FuturePingPong extends Specification {
 					case FuturePingMsg:
 						((FuturePingMsg) message).count.complete(remainingMessages)
 						break
-
+						// Let PIngActor handle the actual Ping/Pong
 					default:
 						parentBehavior.onMessage(message as Serializable)
 				}
@@ -74,7 +74,7 @@ class FuturePingPong extends Specification {
 			ping.waitForDeath()
 			pong.waitForDeath()
 			system.stop()
-					then:
+		then:
 			true
 	}
 }

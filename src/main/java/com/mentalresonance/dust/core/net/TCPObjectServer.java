@@ -21,14 +21,17 @@ package com.mentalresonance.dust.core.net;
 
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
+import com.mentalresonance.dust.core.msgs.PingMsg;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Runs a server to receive remote messages. Spawns a new virtual thread to handle a new connection but
@@ -42,7 +45,7 @@ public class TCPObjectServer {
     final CompletableFuture<Boolean> haveStopped;
     Thread serverThread;
     private ActorSystem actorSystem;
-    final int CONNECTIONS = 16;
+    final int CONNECTIONS = 32;
     LinkedBlockingQueue<TCPObjectSocket> workers = new LinkedBlockingQueue<>(CONNECTIONS);
     /**
      * A server
@@ -72,20 +75,35 @@ public class TCPObjectServer {
         serverThread = new Thread("server "+port)
         {
             public void run() {
+                ServerSocketChannel server = null;
                 try {
-                    ServerSocketChannel server = ServerSocketChannel.open();
-                    server.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+                    server = ServerSocketChannel.open();
+                    //server.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+                    //server.setOption(StandardSocketOptions.SO_REUSEPORT, true);
                     server.bind(new InetSocketAddress(port));
-                    while (!terminated)
+                    log.info ("Server started on socket {}", server.socket());
+                    while (true)
                     {
                         SocketChannel client = server.accept();   // blocking accept
+                        log.info("{} Accepted connection from {}", this, client.getRemoteAddress());
                         Thread.startVirtualThread(() -> connectionServer(actorSystem, client));
+                    }
+                }
+                catch (ClosedByInterruptException ignored) {  // How we stop
+                    // All worker sockets will be closed
+                    if (server != null && !server.socket().isClosed()) {
+                        try {
+                            server.socket().close();
+                        } catch (IOException e) {
+                            log.error ("Error closing server socket: {} on port: {}", e.getMessage(), port);
+                        }
                     }
                 }
                 catch (Exception e) {
                     e.printStackTrace();
                 }
                 log.info("Server stopped");
+                haveStopped.complete(true);
             }
         };
 
@@ -97,47 +115,55 @@ public class TCPObjectServer {
      * @param actorSystem
      * @param client
      */
-    protected void connectionServer( ActorSystem actorSystem, SocketChannel client) {
-        boolean running = true;
+    protected void connectionServer(ActorSystem actorSystem, SocketChannel client) {
+        TCPObjectSocket socket = null;
         try {
-            TCPObjectSocket socket = workers.take();
-            socket.init();
-            socket.wrap(client);
-            while (running) {
-                try {
-                    SentMessage msg = (SentMessage) socket.receive();
-                    if (null == msg) {
-                        running = false;
-                        returnSocket(socket);
-                    }
-                    else {
-                        actorSystem.connectionAccepted(msg, this);
-                        // Ack
-                        socket.init();
-                        socket.send(null);
-                        socket.init();
-                    }
-                } catch (Exception e) {
-                    log.error("Error handling client: %s".formatted(e.getMessage()));
-                    running = false;
-                }
+            // Poll instead of take to avoid indefinite blocking if the pool is exhausted
+            socket = workers.poll(5, TimeUnit.SECONDS);
+            if (socket == null) {
+                log.warn("Server saturated: No available worker sockets");
+                client.close();
+                return;
             }
-        } catch (Exception e) {
-            log.error("Connection server: %s".formatted(e.getMessage()));
-        }
 
+            client.configureBlocking(true);
+            client.setOption(StandardSocketOptions.TCP_NODELAY, true);
+            client.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+            socket.wrap(client);
+
+            while (!terminated)
+            {
+                Object obj = socket.receive();
+
+                if (obj == null) break; // Client sent termination signal (length 0)
+
+                //if (obj instanceof SentMessage msg) {
+                    actorSystem.connectionAccepted((SentMessage)obj, this);
+                    // Ack
+                    socket.send(null);
+                //}
+            }
+        }
+        catch (InterruptedException e) {
+            log.error("Interrupted while handling client {}", client);
+            Thread.currentThread().interrupt();
+        }
+        catch (Exception e) {
+            log.error("Error handling client {}: {}", client, e.getMessage());
+        }
+        finally {
+            log.warn("Closing connection to {}", client);
+            if (socket != null) {
+                returnSocket(socket);
+            }
+        }
     }
 
     public void returnSocket(TCPObjectSocket socket) {
-        try {
-            socket.close();
-            workers.put(socket);
-        }
-        catch (Exception e) {
-            log.error("Error returning socket to pool: %s".formatted(e.getMessage()));
-        }
+        socket.close();
+        socket.init();
+        workers.offer(socket);
     }
-
 
     /**
      * Stops the server. The assumption here is the ActorSystem (and hence the application) is shutting down
@@ -146,8 +172,7 @@ public class TCPObjectServer {
     public void stop() {
         try {
             log.info("Stopping server on port " + port);
-            terminated = true;
-            haveStopped.complete(true);
+            serverThread.interrupt();
         }
         catch (Exception e) {
             log.error("Stopping server: %s".formatted(e.getMessage()));

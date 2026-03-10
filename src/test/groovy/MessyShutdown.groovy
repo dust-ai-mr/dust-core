@@ -81,6 +81,7 @@ class MessyShutdown extends Specification {
 
             stopper.tell(new StartMsg(), null)
             stopper.waitForDeath()
+            system.stop()
         then:
             success
     }

@@ -142,7 +142,7 @@ class ServiceActorTest extends Specification {
 			log.info "Starting Squares"
 			system.context.actorOf( SquareTestActor.props(1000000), "squares").waitForDeath()
 			system.stop()
-					then:
+		then:
 			true
 	}
 }

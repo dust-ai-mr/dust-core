@@ -185,9 +185,9 @@ public class ActorRef implements Serializable {
                 message = new DeadLetter(message, path, sender);
             }
 
-            sentMessage = new SentMessage(message, sender);
 
             if (mailBox != null) { // Local
+                sentMessage = new SentMessage(message, sender);
                 if (! mailBox.dead) {
                     // log.trace("Adding:{} to mailbox:{}  queue presize={}", message, this, mailBox.queue.size());
                     mailBox.queue.add(sentMessage);
@@ -197,7 +197,7 @@ public class ActorRef implements Serializable {
                     if (!PersistentActor.isInShutdown()) { // May be in shutdown but false -- need to fix this
                         ActorRef deadLetterRef = context.getDeadLetterActor();
                         if (deadLetterRef != null && !deadLetterRef.mailBox.dead) { // We may be globally stopping
-                            deadLetterRef.tell(new DeadLetter(sentMessage.message, path, sender), null);
+                            deadLetterRef.tell(new DeadLetter(sentMessage.message(), path, sender), null);
                         }
                     }
                 }
@@ -206,8 +206,7 @@ public class ActorRef implements Serializable {
                 if (! path.contains(":"))
                     path = host + path;
                 try {
-                    sentMessage.remotePath = path;
-                    sendMessage(sentMessage, path);
+                    sendMessage(new SentMessage(message, sender, path), path);
                 }
                 catch (InterruptedException ie) {
                     log.error("Could not get socket to {}: Interrupted", path);
@@ -250,12 +249,12 @@ public class ActorRef implements Serializable {
                 return;
             }
             catch (InterruptedException ie) {
-                log.error("Could not send message to {}: Interrupted", path);
+                log.error("Could not send message {} to {}: Interrupted", sentMessage.message(), path);
                 lastException = ie;
                 i = 10;
             }
             catch (Exception e) {
-                log.error("Could not send message to {}: {}", path, e);
+                log.error("Could not send message {} to {}: {}", sentMessage.message(), path, e);
                 lastException = e;
                 context.system.flushPool(uri);
                 Thread.sleep(5000L);

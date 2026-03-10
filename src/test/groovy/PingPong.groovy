@@ -35,7 +35,7 @@ class PingPong extends Specification {
 			def dt = (System.currentTimeMillis() - ts) / 1000f
 			log.info "40,000,000 message in $dt seconds = ${40000000 / dt} messages / second"
 			system.stop()
-					then:
+		then:
 			true
 	}
 

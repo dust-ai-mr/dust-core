@@ -82,7 +82,7 @@ class Watch extends Specification {
 			w1.waitForDeath()
 			w2.waitForDeath()
 			system.stop()
-					then:
+		then:
 			stopped
 			terminated
 

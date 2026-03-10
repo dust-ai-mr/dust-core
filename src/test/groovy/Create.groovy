@@ -40,8 +40,7 @@ class Create extends Specification {
 			system.context.actorOf(CreatorMonitorActor.props(1000, 5000)).waitForDeath()
 			time = System.currentTimeMillis() - time
 			log.info "5,000,000 done as 500 batches of 10000.  ${ 5000000 / (time / 1000.0)} actors created / second"
-			system.stop()
-			success = true
+			success = system.stop()
 		then:
 			success
 	}

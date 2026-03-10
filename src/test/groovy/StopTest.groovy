@@ -41,7 +41,7 @@ class StopTest extends Specification {
 			system.context.actorOf(StopActor.props(), 'test').waitForDeath();
 			log.info "Stopped"
 			system.stop()
-					then:
+		then:
 			stopped
 	}
 

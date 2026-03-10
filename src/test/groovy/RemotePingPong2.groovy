@@ -21,19 +21,18 @@ import spock.lang.Specification
  * We'll see in RemotePingPong that there is still headroom for multiple pairs of Actors.
  */
 
-class RemotePingPong extends Specification {
+class RemotePingPong2 extends Specification {
 
-	ActorSystem me = new ActorSystem("me", 9094)  // I'm watching remote Actors so I need to be remote
-
-	static ActorSystem system1 = new ActorSystem("RemotePingPong", 9095)
-	static ActorSystem system2 = new ActorSystem("RemotePingPong", 9096)
+	ActorSystem me = new ActorSystem("me", 9097)  // I'm watching remote Actors so I need to be remote
+	static ActorSystem system1 = new ActorSystem("RemotePingPong2", 9098)
+	static ActorSystem system2 = new ActorSystem("RemotePingPong2", 9099)
 
 	@Slf4j
 	static class Runner extends Actor {
 
-		ActorRef ping, pong
+		ActorRef ping3, pong3, ping4, pong4
 
-		int running = 2
+		int running = 4
 		int PINGS = 2000_000
 		long started
 
@@ -44,10 +43,16 @@ class RemotePingPong extends Specification {
 		void preStart() {
 			system1.context.actorOf(PingActor.props(PINGS), 'ping3')
 			system2.context.actorOf(PingActor.props(PINGS), 'pong3')
+			system1.context.actorOf(PingActor.props(PINGS), 'ping4')
+			system2.context.actorOf(PingActor.props(PINGS), 'pong4')
 
-			ping = watch(system1.context.actorSelection("dust://localhost:9095/RemotePingPong/user/ping3"))
-			pong = watch(system2.context.actorSelection("dust://localhost:9096/RemotePingPong/user/pong3"))
-			ping.tell(new PingMsg(), pong)
+			ping3 = watch(system1.context.actorSelection("dust://localhost:9098/RemotePingPong2/user/ping3"))
+			pong3 = watch(system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong3"))
+			ping4 = watch(system1.context.actorSelection("dust://localhost:9098/RemotePingPong2/user/ping4"))
+			pong4 = watch(system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong4"))
+
+			ping3.tell(new PingMsg(), pong3)
+			ping4.tell(new PingMsg(), pong4)
 			started = System.currentTimeMillis()
 		}
 
@@ -57,7 +62,7 @@ class RemotePingPong extends Specification {
 					case Terminated:
 						if (--running == 0) {
 							long deltaT = System.currentTimeMillis() - started
-							log.info "Processed ${2*PINGS} msgs in $deltaT ms. ${(2000f * PINGS) / deltaT} msgs/sec"
+							log.info "Processed ${4*PINGS} msgs in $deltaT ms. ${(4000f * PINGS) / deltaT} msgs/sec"
 							stopSelf()
 						}
 						break
@@ -68,14 +73,14 @@ class RemotePingPong extends Specification {
 			}
 		}
 	}
-	def "Remote Ping Ponger"() {
+	def "Remote Ping Ponger2"() {
 		when:
-			me.context.actorOf(Runner.props()).waitForDeath()
-			me.stop()
-			system1.stop()
-			system2.stop()
-			log.info "Finished"
-		then:
-			true
+		me.context.actorOf(Runner.props()).waitForDeath()
+		me.stop()
+		system1.stop()
+		system2.stop()
+		log.info "Finished"
+	then:
+		true
 	}
 }

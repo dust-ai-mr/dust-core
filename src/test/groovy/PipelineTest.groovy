@@ -74,7 +74,7 @@ class PipelineTest extends Specification {
 			Thread.sleep(500L)
 			counter = msg.counter
 			system.stop()
-					then:
+		then:
 			counter == 4
 	}
 

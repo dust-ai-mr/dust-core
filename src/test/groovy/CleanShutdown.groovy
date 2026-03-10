@@ -65,6 +65,7 @@ import com.mentalresonance.dust.core.msgs.StartMsg
 				Thread.sleep(2000)
 				system.context.stop(stopper)
 				Thread.sleep(1000)
+				system.stop()
 			then:
 				success
 		}

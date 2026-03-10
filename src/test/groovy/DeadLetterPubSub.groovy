@@ -60,7 +60,7 @@ class DeadLetterPubSub extends Specification {
 			// After the subscriber receives the dead letter PingMsg  it will stop
 			subscriberRef.waitForDeath()
 			system.stop()
-					then:
+		then:
 			success
 	}
 

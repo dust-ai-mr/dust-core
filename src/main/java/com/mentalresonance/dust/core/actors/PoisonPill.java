@@ -28,10 +28,5 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-public class PoisonPill implements Serializable {
-    /**
-     * Constructor
-     */
-    public PoisonPill() {}
-}
+public record PoisonPill() implements Serializable { }
 

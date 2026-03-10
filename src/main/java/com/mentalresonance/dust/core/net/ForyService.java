@@ -20,38 +20,46 @@
 package com.mentalresonance.dust.core.net;
 
 import com.mentalresonance.dust.core.actors.ActorRef;
+import com.mentalresonance.dust.core.actors.PoisonPill;
 import com.mentalresonance.dust.core.actors.SentMessage;
 import com.mentalresonance.dust.core.msgs.*;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
-
+import org.apache.fory.logging.LoggerFactory;
+import org.apache.fory.logging.LogLevel;
 
 /**
  * (de) serialize objects using the  Apache Fory serializer
  *
  * @author alanl
  */
-public class ForyService {
 
+
+public class ForyService {
     /**
      * Constructor
      */
-    private ForyService() {}
+    private ForyService() {
+    }
 
     public static Fory fory() {
+        // Force Fory's internal global level to ERROR -- way.... too chatty otherwise
+        // This affects ForyLogger's internal "if (LoggerFactory.getLogLevel() >= ...)" checks
+        LoggerFactory.setLogLevel(LogLevel.ERROR_LEVEL);
         Fory fory = Fory.builder().withLanguage(Language.JAVA)
             .requireClassRegistration(false)
             .build();
 
 
-        fory.register(ActorRef.class);
-        fory.register(SentMessage.class);
-        fory.register(DeadLetter.class);
-        fory.register(ReturnableMsg.class);
-        fory.register(CreateChildMsg.class);
-        fory.register(GetStateMsg.class);
-        fory.register(GetChildrenMsg.class);
-        fory.register(PingMsg.class);
+        fory.register(ActorRef.class, 101);
+        fory.register(SentMessage.class, 102);
+        fory.register(DeadLetter.class, 103);
+        fory.register(ReturnableMsg.class, 104);
+        fory.register(CreateChildMsg.class, 105);
+        fory.register(GetStateMsg.class, 106);
+        fory.register(GetChildrenMsg.class, 107);
+        fory.register(PingMsg.class, 108);
+        fory.register(PoisonPill.class, 109);
 
         return fory;
     }

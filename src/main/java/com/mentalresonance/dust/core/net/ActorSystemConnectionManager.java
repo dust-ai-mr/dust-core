@@ -24,38 +24,29 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Maintain a pool of connections from My Actor system -> Remote Actor system.
  * Dynamically create (in fixed pool size of SocketsPerRemote), otherwise performance would
- * be terrible if we had to open/close for each tell()
+ * be terrible if we had to open/close for each tell().
  */
 @Slf4j
 public class ActorSystemConnectionManager {
 
     private static final Object SocketLock = new Object();
-    private static final Integer SocketsPerRemote = 4;
+    private static final Integer SocketsPerRemote = 8;
 
-    final long PING_INTERVAL = 15000; // How often we check
+    final long PING_INTERVAL = 10000; // How often we check
     final long PING_TIMEOUT = 30000;  // If haven't heard from a connection over this time then flush it
 
     final Thread managerThread;
 
     @Getter
     ActorSystem actorSystem;
-    /**
-     * When the object server receives a new connection we put its socket here. This means
-     * if stopping we can close our ends.
-     */
-    private final ConcurrentHashMap<SocketChannel, Boolean> remoteSockets = new ConcurrentHashMap<>();
 
     /**
      * A remote System may go down but our sockets don't know about. So for now we simply check
@@ -100,22 +91,33 @@ public class ActorSystemConnectionManager {
      * @return
      */
     private String remoteKey(URI path) {
-        return "%s:%d".formatted(path.getHost(), path.getPort());
+        return path.getHost() + ":" +  path.getPort();
     }
 
     /**
      * Flush the socket pool
-     * @param all if true the completely drain the pool, otherwise only those who haven't been pinged recently
+     * @param force if true the completely drain the pool, otherwise only those who haven't been pinged recently
      */
-    public void flushPool(boolean all) {
+    public void flushPool(boolean force) {
         synchronized (SocketLock) {
             for (String key : remoteActorSystems.keySet()) {
                 try {
                     ConnectionPool pool = remoteActorSystems.get(key);
-                    pool.flush(all);
+                    pool.flush(force);
                 } catch (Exception e) {
                     log.error("flushPool(): %s".formatted(e.getMessage()));
                 }
+            }
+        }
+    }
+
+    public void flushPool(URI uri) {
+        synchronized (SocketLock) {
+            try {
+                ConnectionPool pool = remoteActorSystems.get(remoteKey(uri));
+                pool.flush(true);
+            } catch (Exception e) {
+                log.error("flushPool(): %s".formatted(e.getMessage()));
             }
         }
     }
@@ -134,12 +136,12 @@ public class ActorSystemConnectionManager {
 
         while (--retries >= 0) {
             try {
-                synchronized (SocketLock) {
+                //synchronized (SocketLock) {
                     if (!remoteActorSystems.containsKey(key)) {
                         pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
                         remoteActorSystems.put(key, pool);
                     }
-                }
+                //}
                 return remoteActorSystems.get(key).acquire(uri.getPath());
             }
             catch (IOException e) {
@@ -157,46 +159,11 @@ public class ActorSystemConnectionManager {
     }
 
     /**
-     * Add incoming connection to managed list
-     * @param socket of incoming connection
+     * Shutdown the manager.
      */
-    public void addRemoteSocket(SocketChannel socket) {
-        remoteSockets.put(socket, true);
-    }
-
-    /**
-     * Close incoming connection. We send a null message so the client knows to close his end.
-     * @param remoteSocket - socket to close
-     */
-    public void closeRemoteSocket(SocketChannel remoteSocket)  {
-        remoteSockets.remove(remoteSocket);
-        /*
-         * If the 'remote' socket was actually the server shutdown null message sender then it has already been
-         * closed by the handler.
-         */
-        try {
-            remoteSocket.write((ByteBuffer)null);
-            remoteSocket.close();
-        }
-        catch(Exception ignored) {}
-    }
-
-    private void closeRemoteSockets() throws Exception {
-        for(SocketChannel socket: remoteSockets.keySet()) {
-            closeRemoteSocket(socket);
-        }
-    }
-
-    /**
-     * Shutdown the manager. We close outgoing and incoming connections by sending
-     * null messages on them and then closing the sockets.
-     *
-     * @throws Exception on error
-     */
-    public void shutdown() throws Exception {
+    public void shutdown() {
         managerThread.interrupt();
         flushPool(true);
-        closeRemoteSockets();
         log.info("Shutdown");
     }
 
@@ -212,20 +179,6 @@ public class ActorSystemConnectionManager {
             pool.restore(objectSocket);
         } else
             log.warn("Returning socket to unknown pool: {}", objectSocket.key);
-    }
-
-    /**
-     * Flush connection pool of all sockets associate with remote ActorSystem of uri
-     * @param uri
-     * @throws Exception
-     */
-    public void flushPool(URI uri) throws Exception {
-        // log.trace("Returning socket");
-        ConnectionPool pool = remoteActorSystems.get(remoteKey(uri));
-        if (pool != null) {
-            pool.flush(true);
-        } else
-            log.warn("Flushing unknown pool for: {}", uri);
     }
 
     /**
@@ -256,28 +209,33 @@ public class ActorSystemConnectionManager {
      * Pool of connections for one remote ActorSystem.
      */
     private class ConnectionPool {
-        String key;
-        long lastPing;
-        LinkedBlockingDeque<WrappedTCPObjectSocket> q;
+        String key, host;
+        long lastAccess;
+        int port;
+        LinkedBlockingDeque<WrappedTCPObjectSocket> connections;
 
         ConnectionPool(int size, String key, String host, int port) throws IOException {
             this.key = key;
-            q = new LinkedBlockingDeque<>();
+            this.host = host;
+            this.port = port;
+
+            connections = new LinkedBlockingDeque<>();
 
             for (int i = 0; i < SocketsPerRemote; ++i) {
-                SocketChannel channel = SocketChannel.open(new InetSocketAddress(host, port));
-                q.add(
-                    new WrappedTCPObjectSocket(key, new TCPObjectSocket(channel))
-                );
+                connections.add(new WrappedTCPObjectSocket(key, new TCPObjectSocket()));
             }
-            lastPing = System.currentTimeMillis();
+            lastAccess = System.currentTimeMillis();
         }
 
 
         WrappedTCPObjectSocket acquire(String path) throws IOException, InterruptedException {
-            WrappedTCPObjectSocket socket =  q.take();
+            WrappedTCPObjectSocket socket =  connections.take();
+            if (socket.tcpObjectSocket.isClosed()) {
+                socket.tcpObjectSocket.wrap(SocketChannel.open(new InetSocketAddress(host, port)));
+            }
             socket.tcpObjectSocket.init();
             socket.path = path;
+            lastAccess = System.currentTimeMillis();
             return socket;
         }
 
@@ -286,22 +244,59 @@ public class ActorSystemConnectionManager {
             WrappedTCPObjectSocket which have still to open a connection (and reduce load on the server)
          */
         void restore(WrappedTCPObjectSocket objectSocket) {
-            q.addFirst(objectSocket); // Return socket
+            connections.addFirst(objectSocket); // Return socket
         }
 
-        public void flush(boolean all) throws Exception {
-            if (all || System.currentTimeMillis() - lastPing > PING_TIMEOUT) {
-                log.trace("Flushing pool for key: %s".formatted(key));
-                for (ActorSystemConnectionManager.WrappedTCPObjectSocket socket : q) {
+        /*
+            Pool management. We keep a track (lastAccess) of when a connection was acquired i.e.
+            there was activity in the pool. If too much time passes (PING_TIMEOUT) we drop the pool after
+            signaling the remote server to stop the server for this pool.
+         */
+
+        /**
+         * Flush connection pool of all sockets associated with remote ActorSystem of uri
+         * @param uri
+         */
+        public void flushPool(URI uri)
+        {
+            ConnectionPool pool = remoteActorSystems.get(remoteKey(uri));
+
+            if (pool != null) {
+                pool.flush(true);
+            }
+            else
+                log.warn("Flushing unknown pool for: {}", uri);
+        }
+
+        /**
+         * Flushes the connection pool by closing and removing all associated sockets.
+         * If the `force` parameter is true or the timeout since the last access has been exceeded,
+         * the flush operation is performed. Closes remote server associated with this pool.
+         *
+         * @param force A boolean flag indicating whether the flush should be forced. If true,
+         *              the connection pool is flushed irrespective of the timeout condition.
+         */
+        public void flush(boolean force) {
+            if (force || System.currentTimeMillis() - lastAccess > PING_TIMEOUT)
+            {
+                log.info("[{}] Flushing pool for key: {}", actorSystem.getPort(), key);
+
+                boolean closedRemote = false;
+                for (ActorSystemConnectionManager.WrappedTCPObjectSocket socket : connections)
+                {
                     try {
-                        if (! socket.tcpObjectSocket.isClosed()) {
-                            socket.tcpObjectSocket.send(null);
+                        if (!socket.tcpObjectSocket.isClosed()) {
+                            if (! closedRemote) {
+                                socket.tcpObjectSocket.send(null);
+                                closedRemote = true;
+                            }
                             socket.tcpObjectSocket.close();
-                        } else {
-                            log.warn("Socket to remote actor system {} was closed", key);
-                            q.remove(socket);
                         }
-                    } catch(Exception ignored) {}
+                        connections.remove(socket);
+                    }
+                    catch(Exception e) {
+                        log.error("Flushing pool: %s".formatted(e.getMessage()));
+                    }
                 }
                 remoteActorSystems.remove(key);
             }

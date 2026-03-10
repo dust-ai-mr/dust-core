@@ -18,7 +18,7 @@ import spock.lang.Specification
 @Slf4j
 class ReapTest extends Specification {
 
-	static complete
+	static boolean complete = false
 
 	@Slf4j
 	static class ClientActor extends Actor {
@@ -115,7 +115,7 @@ class ReapTest extends Specification {
 			system.context.actorOf(ParentActor.props(), 'parent')
 			system.context.actorOf(ClientActor.props(), 'client').waitForDeath();
 			system.stop()
-					then:
+		then:
 			complete
 	}
 

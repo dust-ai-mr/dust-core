@@ -116,9 +116,9 @@ class AllForOneSupervision extends Specification {
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			! resumed
-			! restarted
-			stopped
+			(! resumed)
+			(! restarted)
+			(! stopped)
 	}
 
 	def "Resume Supervision"() {
@@ -129,8 +129,8 @@ class AllForOneSupervision extends Specification {
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			! stopped
-			! restarted
+			(! stopped)
+			(! restarted)
 			resumed
 	}
 
@@ -142,8 +142,8 @@ class AllForOneSupervision extends Specification {
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			! stopped
-			! resumed
+			(! stopped)
+			(! resumed)
 			restarted
 	}
 }
