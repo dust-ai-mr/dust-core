@@ -91,7 +91,7 @@ public class ThrottlingRelayActor extends Actor {
                             p.getSender().tell(p, p.getSender());
                     }
                         pump = scheduleIn(msg, intervalMS);
-                    }
+                }
                 case ProxyMsg msg -> {
                     q.add(msg);
                 }

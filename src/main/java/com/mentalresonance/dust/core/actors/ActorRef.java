@@ -390,7 +390,6 @@ public class ActorRef implements Serializable {
     public void unstashAll(List<SentMessage> stash) {
         Object[] newMsgs;
 
-        mailBox.queue.takeLock.lock();
         mailBox.queue.putLock.lock();
 
         newMsgs = mailBox.queue.toArray();
@@ -400,7 +399,6 @@ public class ActorRef implements Serializable {
         for (Object o : newMsgs) {
             mailBox.queue.add((SentMessage) o);
         }
-        mailBox.queue.takeLock.unlock();
         mailBox.queue.putLock.unlock();
     }
 

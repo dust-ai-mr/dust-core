@@ -82,7 +82,7 @@ public class ThrottlingWrapperActor extends Actor {
             if (Objects.requireNonNull(message) instanceof StartMsg msg) {
                 QueuedMsg m;
                 if (null != (m = q.poll())) {
-                    target.tell(m.msg, m.sender);
+                    target.tell(m.msg(), m.sender());
                 }
                 pump = scheduleIn(msg, intervalMS);
             }
@@ -92,13 +92,5 @@ public class ThrottlingWrapperActor extends Actor {
         };
     }
 
-    static class QueuedMsg {
-        Serializable msg;
-        ActorRef sender;
-
-        QueuedMsg(Serializable msg, ActorRef sender) {
-            this.msg = msg;
-            this.sender = sender;
-        }
-    }
+    private record QueuedMsg(Serializable msg, ActorRef sender) {}
 }
