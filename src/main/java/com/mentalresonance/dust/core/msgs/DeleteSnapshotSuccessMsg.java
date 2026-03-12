@@ -28,9 +28,4 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-public class DeleteSnapshotSuccessMsg implements Serializable {
-    /**
-     * Constructor
-     */
-    public DeleteSnapshotSuccessMsg() {}
-}
+public record DeleteSnapshotSuccessMsg() implements Serializable {}

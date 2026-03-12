@@ -133,8 +133,8 @@ public class PipelineActor extends Actor {
         return message -> {
             if (message instanceof PipelineStageMsg msg) {
                 ActorRef child;
-                if (null != (child = stages.getOrDefault(msg.getStage(), null))) {
-                    child.tell(msg.getMsg(), sender);
+                if (null != (child = stages.getOrDefault(msg.stage(), null))) {
+                    child.tell(msg.msg(), sender);
                 }
             }
             else {

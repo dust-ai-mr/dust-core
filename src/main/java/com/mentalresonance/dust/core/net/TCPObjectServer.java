@@ -81,11 +81,11 @@ public class TCPObjectServer {
                     //server.setOption(StandardSocketOptions.SO_REUSEADDR, true);
                     //server.setOption(StandardSocketOptions.SO_REUSEPORT, true);
                     server.bind(new InetSocketAddress(port));
-                    log.info ("Server started on socket {}", server.socket());
+                    log.info ("Remoting Server started on socket {}", server.socket());
                     while (true)
                     {
                         SocketChannel client = server.accept();   // blocking accept
-                        log.info("{} Accepted connection from {}", this, client.getRemoteAddress());
+                        log.trace("{} Accepted connection from {}", this, client.getRemoteAddress());
                         Thread.startVirtualThread(() -> connectionServer(actorSystem, client));
                     }
                 }
@@ -102,7 +102,7 @@ public class TCPObjectServer {
                 catch (Exception e) {
                     e.printStackTrace();
                 }
-                log.info("Server stopped");
+                log.info("Remoting Server stopped on socket: {}", server.socket());
                 haveStopped.complete(true);
             }
         };
@@ -161,7 +161,7 @@ public class TCPObjectServer {
 
     public void returnSocket(TCPObjectSocket socket) {
         socket.close();
-        socket.init();
+        socket.restoreInitialCapacity();
         workers.offer(socket);
     }
 

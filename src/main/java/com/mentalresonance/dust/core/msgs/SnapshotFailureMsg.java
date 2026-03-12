@@ -20,7 +20,6 @@
 package com.mentalresonance.dust.core.msgs;
 
 import com.mentalresonance.dust.core.actors.PersistentActor;
-import lombok.Getter;
 
 import java.io.Serializable;
 
@@ -29,19 +28,4 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-@Getter
-public class SnapshotFailureMsg implements Serializable {
-    /**
-     * Exception causing the failure
-     */
-    final Exception exception;
-
-    /**
-     * Constructor
-     * @param e exception describing failure
-     */
-    public SnapshotFailureMsg(Exception e) {
-        this.exception = e;
-    }
-
-}
+public record SnapshotFailureMsg(Exception exception) implements Serializable {}

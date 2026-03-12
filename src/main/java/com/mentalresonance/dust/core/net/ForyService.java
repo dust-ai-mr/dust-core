@@ -28,6 +28,10 @@ import org.apache.fory.config.Language;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.logging.LogLevel;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+
 /**
  * (de) serialize objects using the  Apache Fory serializer
  *
@@ -39,10 +43,12 @@ public class ForyService {
     /**
      * Constructor
      */
-    private ForyService() {
-    }
+    private ForyService() { }
 
     public static Fory fory() {
+        return fory(new LinkedList<>());
+    }
+    public static Fory fory(List<Class<?>> classes) {
         // Force Fory's internal global level to ERROR -- way.... too chatty otherwise
         // This affects ForyLogger's internal "if (LoggerFactory.getLogLevel() >= ...)" checks
         LoggerFactory.setLogLevel(LogLevel.ERROR_LEVEL);
@@ -51,16 +57,21 @@ public class ForyService {
             .build();
 
 
-        fory.register(ActorRef.class, 101);
-        fory.register(SentMessage.class, 102);
-        fory.register(DeadLetter.class, 103);
-        fory.register(ReturnableMsg.class, 104);
-        fory.register(CreateChildMsg.class, 105);
-        fory.register(GetStateMsg.class, 106);
-        fory.register(GetChildrenMsg.class, 107);
-        fory.register(PingMsg.class, 108);
-        fory.register(PoisonPill.class, 109);
+        fory.register(ActorRef.class);
+        fory.register(SentMessage.class);
+        fory.register(DeadLetter.class);
+        fory.register(ReturnableMsg.class);
+        fory.register(CreateChildMsg.class);
+        fory.register(GetStateMsg.class);
+        fory.register(GetChildrenMsg.class);
+        fory.register(PingMsg.class);
+        fory.register(PoisonPill.class);
+        fory.register(LinkedHashMap.class);
 
+
+        for(Class<?> clazz : classes) {
+            fory.register(clazz);
+        }
         return fory;
     }
 }

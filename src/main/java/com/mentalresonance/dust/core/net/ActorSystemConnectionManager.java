@@ -175,10 +175,10 @@ public class ActorSystemConnectionManager {
         // log.trace("Returning socket");
         ConnectionPool pool = remoteActorSystems.get(objectSocket.key);
         if (pool != null) {
-            objectSocket.tcpObjectSocket.init();
+            objectSocket.tcpObjectSocket.restoreInitialCapacity();
             pool.restore(objectSocket);
         } else
-            log.warn("Returning socket to unknown pool: {}", objectSocket.key);
+            log.trace("Returning socket to unknown pool: {}", objectSocket.key);
     }
 
     /**
@@ -279,7 +279,7 @@ public class ActorSystemConnectionManager {
         public void flush(boolean force) {
             if (force || System.currentTimeMillis() - lastAccess > PING_TIMEOUT)
             {
-                log.info("[{}] Flushing pool for key: {}", actorSystem.getPort(), key);
+                log.trace("[{}] Flushing pool for key: {}", actorSystem.getPort(), key);
 
                 boolean closedRemote = false;
                 for (ActorSystemConnectionManager.WrappedTCPObjectSocket socket : connections)

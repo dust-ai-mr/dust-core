@@ -189,7 +189,7 @@ public class PersistentActor extends Actor {
     protected ActorBehavior recoveryBehavior() {
         return message -> {
             if (Objects.requireNonNull(message) instanceof SnapshotMsg msg) {
-                log.warn("%s did not handle Snapshot Recovery %s".formatted(self.path, msg.getSnapshot()));
+                log.warn("%s did not handle Snapshot Recovery %s".formatted(self.path, msg.snapshot()));
                 become(createBehavior());
             } else {
                 log.error("%s received unexpected message %s in recoveryBehavior".formatted(self.path, message));
@@ -211,10 +211,10 @@ public class PersistentActor extends Actor {
                 case DeleteSnapshotSuccessMsg ignored -> {}
 
                 case DeleteSnapshotFailureMsg fail ->
-                        log.error("%s got unhandled DeleteSnapshotFailureMsg %s".formatted(self.path, fail.getException()));
+                        log.error("%s got unhandled DeleteSnapshotFailureMsg %s".formatted(self.path, fail.exception()));
 
                 case SnapshotFailureMsg fail ->
-                        log.error("%s got unhandled SnapshotFailureMsg %s".formatted(self.path, fail.getException()));
+                        log.error("%s got unhandled SnapshotFailureMsg %s".formatted(self.path, fail.exception()));
 
                 default -> super.createBehavior().onMessage(message);
             }

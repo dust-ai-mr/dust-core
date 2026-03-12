@@ -25,10 +25,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class PingMsg implements Serializable {
-
-    /**
-     * Constructor
-     */
-    public PingMsg() {}
-}
+public record PingMsg() implements Serializable {}

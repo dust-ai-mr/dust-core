@@ -135,7 +135,7 @@ public class Actor implements Runnable {
             switch(message) {
 
                 case ChildExceptionMsg msg -> {
-                    log.warn(String.format("%s: Exception from child: %s - %s", self.path, sender, msg.getException().getMessage()));
+                    log.warn(String.format("%s: Exception from child: %s - %s", self.path, sender, msg.exception().getMessage()));
                 }
                 case CreatedChildMsg msg -> {
                     // Commonly ignored
@@ -399,13 +399,14 @@ public class Actor implements Runnable {
                          * the child may be dead.
                          */
                         case DeleteChildMsg msg -> {
+                            String name = msg.name();
                             try {
-                                ActorRef child = actorSelection("./" + msg.getName()).getRef();
+                                ActorRef child = actorSelection("./" + name).getRef();
                                 if (! child.isDeadLetter) {
-                                    context.stop(actorSelection("./" + msg.getName()).getRef());
+                                    context.stop(actorSelection("./" + name).getRef());
                                 }
                                 else {
-                                    children.remove(msg.getName());
+                                    children.remove(name);
                                 }
                             } catch (Exception e) {
                                 /*
@@ -413,8 +414,8 @@ public class Actor implements Runnable {
                                    I may be holding an expired ActorRef in this case, so remove it as a child
                                    if I have it.
                                  */
-                                log.error("{}: failed to delete child {}: {} - zombie?", self.path, msg.getName(), e.getMessage());
-                                children.remove(msg.getName());
+                                log.error("{}: failed to delete child {}: {} - zombie?", self.path,name, e.getMessage());
+                                children.remove(name);
                             }
                         }
 
@@ -696,8 +697,8 @@ public class Actor implements Runnable {
                     unBecome();
                     if (null != thenBecome)
                         stashBecome(thenBecome);
-                    if (null != dm.getMsg())
-                        tellSelf(dm.getMsg());
+                    if (null != dm.msg())
+                        tellSelf(dm.msg());
                     else if (null != thenMsg)
                         tellSelf(thenMsg);
                 }

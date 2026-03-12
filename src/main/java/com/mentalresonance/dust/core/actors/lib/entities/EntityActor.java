@@ -38,6 +38,7 @@ import java.util.Objects;
  * @author alanl
  */
 @Slf4j
+@SuppressWarnings("unchecked")
 public abstract class EntityActor<T extends Serializable> extends PersistentActor {
 
     /**
@@ -81,7 +82,7 @@ public abstract class EntityActor<T extends Serializable> extends PersistentActo
     protected ActorBehavior recoveryBehavior() {
         return message -> {
             if (Objects.requireNonNull(message) instanceof SnapshotMsg msg) {
-                state = (T) msg.getSnapshot();
+                state = (T) msg.snapshot();
                 if (null == state) {
                     become(waitForStateBehavior());
                     getState(self.name);
@@ -102,7 +103,7 @@ public abstract class EntityActor<T extends Serializable> extends PersistentActo
     protected ActorBehavior waitForStateBehavior() {
         return message -> {
             if (Objects.requireNonNull(message) instanceof EntityStateMsg msg) {
-                state = (T) msg.getState();
+                state = (T) msg.state();
                 become(createBehavior());
                 postGetState(self.name);
                 unstashAll();

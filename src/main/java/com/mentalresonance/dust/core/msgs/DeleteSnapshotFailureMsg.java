@@ -29,18 +29,4 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-@Getter
-public class DeleteSnapshotFailureMsg implements Serializable {
-    /**
-     * The exception associated with the failure
-     */
-    final Exception exception;
-
-    /**
-     * Delete snapshot failed
-     * @param e with this exception
-     */
-    public DeleteSnapshotFailureMsg(Exception e) {
-        this.exception = e;
-    }
-}
+public record DeleteSnapshotFailureMsg(Exception exception) implements Serializable {}

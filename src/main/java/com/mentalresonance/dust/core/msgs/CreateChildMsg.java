@@ -30,35 +30,10 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-@Getter
-public class CreateChildMsg implements Serializable {
-    /**
-     * Name to be given to child
-     */
-    final String name;
+public record CreateChildMsg(String name, Serializable msg) implements Serializable {
 
-    /**
-     * Optional message to be sent to child
-     */
-    final Serializable msg;
-
-    /**
-     * Constructor
-     * @param name of child
-     */
     public CreateChildMsg(String name) {
-        this.name = name;
-        msg = null;
-    }
-
-    /**
-     * Constructor
-     * @param name of child
-     * @param msg sent to the child after it creation
-     */
-    public CreateChildMsg(String name, Serializable msg) {
-        this.name = name;
-        this.msg = msg;
+        this(name, null);
     }
 
     /**
@@ -69,4 +44,6 @@ public class CreateChildMsg implements Serializable {
     public String toString() {
         return "CreateChildMsg Name:" + name + " Msg:" + msg;
     }
+
 }
+

@@ -27,27 +27,11 @@ import java.io.Serializable;
  * Can be sent by a delegated Actor to its parent to both
  * stop it and the delegation and have the parent's new behavior receive the enclosed msg
  */
-public class DelegatingMsg implements Serializable {
-
-    /**
-     * Optional message to be sent to the delegating Actor
-     */
-    @Getter
-    final
-    Serializable msg;
-
+public record DelegatingMsg(Serializable msg) implements Serializable {
     /**
      * Constructor
      */
     public DelegatingMsg() {
-        this.msg = null;
-    }
-
-    /**
-     * Constructor
-     * @param msg to be sent to delegating Actor
-     */
-    public DelegatingMsg(Serializable msg) {
-        this.msg = msg;
+        this(null);
     }
 }

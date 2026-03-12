@@ -19,25 +19,9 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
  * On receipt an Actor stops its named child
  */
-@Getter
-public class DeleteChildMsg implements Serializable {
-    /**
-     * Name of child to stop
-     */
-    final String name;
-
-    /**
-     * Constructor
-     * @param name of child to stop
-     */
-    public DeleteChildMsg(String name) {
-        this.name = name;
-    }
-}
+public record DeleteChildMsg(String name) implements Serializable {}

@@ -20,8 +20,6 @@
 package com.mentalresonance.dust.core.msgs;
 
 import com.mentalresonance.dust.core.actors.ActorRef;
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
@@ -29,30 +27,7 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-public class ChildExceptionMsg implements Serializable {
-    /**
-     * The child who threw
-     */
-    @Getter
-    final
-    ActorRef child;
-    /**
-     * The exception
-     */
-    @Getter
-    final
-    Throwable exception;
-
-    /**
-     * Constructor
-     * @param child who threw
-     * @param exception .. the exception
-     */
-    public ChildExceptionMsg(ActorRef child, Throwable exception) {
-        this.child = child;
-        this.exception = exception;
-    }
-
+public record ChildExceptionMsg(ActorRef child, Throwable exception) implements Serializable {
     @Override
     public String toString() {
         return "ChildExceptionMsg from child: " + child + " exception: " + exception.getMessage();

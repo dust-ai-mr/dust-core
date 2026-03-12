@@ -26,10 +26,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class PauseMsg implements Serializable {
-
-    /**
-     * Constructor
-     */
-    public PauseMsg() {}
-}
+public record PauseMsg() implements Serializable {}

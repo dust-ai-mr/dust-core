@@ -132,9 +132,9 @@ public abstract class PersistentServiceManagerActor extends PersistentActor {
 
                 case DeleteSnapshotSuccessMsg ignored -> {}
 
-                case SnapshotFailureMsg msg -> log.error("Snapshot failed: %s".formatted(msg.getException()));
+                case SnapshotFailureMsg msg -> log.error("Snapshot failed: %s".formatted(msg.exception()));
 
-                case DeleteSnapshotFailureMsg msg -> log.error("Delete Snapshot failed: %s".formatted(msg.getException()));
+                case DeleteSnapshotFailureMsg msg -> log.error("Delete Snapshot failed: %s".formatted(msg.exception()));
 
                 case NextMsg ignored -> {
                     if (dirty) {

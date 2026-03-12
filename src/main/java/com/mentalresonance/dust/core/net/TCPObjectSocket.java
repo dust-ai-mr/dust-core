@@ -9,33 +9,28 @@ import org.apache.fory.memory.MemoryUtils;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.StandardSocketOptions;
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-/**
- * High-performance TCP Wrapper for Fory Serialization.
- * Optimized for Virtual Threads and Sequential Request/Ack patterns.
- */
 @Slf4j
 public class TCPObjectSocket {
 
-    private static final int MAX_PAYLOAD = 64 * 1024;
-    private static final int HEADER_SIZE = 4; // 4 bytes for Length Int
+    private static final int HEADER_SIZE = 4;
+    private static final int DEFAULT_CAPACITY = 64 * 1024 + HEADER_SIZE;
+    private static final int MAX_FRAME_SIZE = 8 * 1024 * 1024; // example 64 MiB hard cap
 
     private final Fory fory;
 
-    // Shared buffer for both directions (Saves 64KB native memory per socket)
-    private final ByteBuffer buffer;
-    private final MemoryBuffer mem;
+    private ByteBuffer buffer;
+    private MemoryBuffer mem;
 
     @Getter
     private SocketChannel socketChannel;
 
     public TCPObjectSocket() {
         this.fory = ForyService.fory();
-
-        // Single allocation of Direct Memory (Outside JVM Heap)
-        this.buffer = ByteBuffer.allocateDirect(MAX_PAYLOAD + HEADER_SIZE);
+        this.buffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY);
         this.mem = MemoryUtils.wrap(buffer);
     }
 
@@ -44,123 +39,145 @@ public class TCPObjectSocket {
         wrap(ch);
     }
 
-    /**
-     * Resets buffer pointers. Call this before returning to a pool.
-     */
     public void init() {
         buffer.clear();
         mem.readerIndex(0);
         mem.writerIndex(0);
     }
 
-    /**
-     * Configures the channel for high-throughput, low-latency object transfer.
-     */
     public TCPObjectSocket wrap(SocketChannel ch) {
         if (ch != null) {
             try {
                 this.socketChannel = ch;
                 this.socketChannel.configureBlocking(true);
-
-                // Disable Nagle's algorithm for instant ACK delivery
                 this.socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                 this.socketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-                this.socketChannel.setOption(StandardSocketOptions.SO_RCVBUF, MAX_PAYLOAD + HEADER_SIZE);
-                this.socketChannel.setOption(StandardSocketOptions.SO_SNDBUF, MAX_PAYLOAD + HEADER_SIZE);
-
                 return this;
             } catch (IOException e) {
-                log.error("Failed to configure SocketChannel: {}", e.getMessage());
+                log.error("Failed to configure SocketChannel", e);
             }
         }
         return this;
     }
 
-    // ------------------------------------------------
-    // SEND
-    // ------------------------------------------------
-
     public void send(Object obj) throws Exception {
-        buffer.clear();
-
         if (obj == null) {
-            // Fast Null/Ack: Just 4 bytes of 0
+            ensureCapacity(HEADER_SIZE);
+            buffer.clear();
             buffer.putInt(0);
             buffer.flip();
+            writeFully(buffer);
+            return;
         }
-        else {
-            // 1. Reserve space for header, start writing at index 4
+
+        // First try with current buffer.
+        while (true) {
+            buffer.clear();
             buffer.position(HEADER_SIZE);
+            mem.readerIndex(0);
             mem.writerIndex(HEADER_SIZE);
 
-            // 2. Serialize directly into the Direct Buffer
-            fory.serialize(mem, obj);
+            try {
+                fory.serialize(mem, obj);
 
-            int endPosition = mem.writerIndex();
-            int payloadSize = endPosition - HEADER_SIZE;
+                int end = mem.writerIndex();
+                int payloadSize = end - HEADER_SIZE;
 
-            // 3. Patch the length header at the beginning
-            buffer.putInt(0, payloadSize);
+                if (payloadSize < 0 || payloadSize > MAX_FRAME_SIZE) {
+                    throw new IOException("Serialized payload exceeds max frame size: " + payloadSize);
+                }
 
-            // 4. Prepare for the syscall
-            buffer.limit(endPosition);
-            buffer.position(0);
-        }
+                buffer.putInt(0, payloadSize);
+                buffer.limit(end);
+                buffer.position(0);
 
-        // Loop handles partial writes (though rare in blocking mode)
-        while (buffer.hasRemaining()) {
-            socketChannel.write(buffer);
+                writeFully(buffer);
+                log.trace("Sent {} bytes for {}", end, obj);
+                return;
+            } catch (IndexOutOfBoundsException | BufferOverflowException | IllegalArgumentException e) {
+                // Buffer too small; grow and retry.
+                int needed = Math.max(buffer.capacity() * 2, estimateNeededCapacity());
+                ensureCapacity(Math.min(needed, MAX_FRAME_SIZE + HEADER_SIZE));
+            }
         }
     }
 
-    // ------------------------------------------------
-    // RECEIVE
-    // ------------------------------------------------
-
     public Object receive() throws Exception {
-        // 1. Read the 4-byte header
-        fillBuffer(HEADER_SIZE);
+        ensureCapacity(HEADER_SIZE);
+
+        buffer.clear();
+        buffer.limit(HEADER_SIZE);
+        readFully(buffer);
         buffer.flip();
+
         int payloadSize = buffer.getInt();
 
-        // 0-byte payload indicates a NULL object/ACK
         if (payloadSize == 0) {
             return null;
         }
-
-        if (payloadSize < 0 || payloadSize > MAX_PAYLOAD) {
-            throw new IOException("Protocol violation: Invalid payload size " + payloadSize);
+        if (payloadSize < 0 || payloadSize > MAX_FRAME_SIZE) {
+            throw new IOException("Protocol violation: invalid payload size " + payloadSize);
         }
 
-        // 2. Read the full payload
-        fillBuffer(payloadSize);
+        ensureCapacity(payloadSize);
+
+        buffer.clear();
+        buffer.limit(payloadSize);
+        readFully(buffer);
         buffer.flip();
 
-        // 3. Map Fory MemoryBuffer to the data segment
         mem.readerIndex(0);
         mem.writerIndex(payloadSize);
 
-        // 4. Reconstruct the object
-        return fory.deserialize(mem);
+        try {
+            Object result = fory.deserialize(mem);
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to deserialize {} size {}", e, payloadSize);
+            throw e;
+        }
     }
 
-    // ------------------------------------------------
-    // INTERNAL UTILS
-    // ------------------------------------------------
+    private void ensureCapacity(int neededPayloadBytes) {
+        int needed = neededPayloadBytes;
+        if (needed > MAX_FRAME_SIZE + HEADER_SIZE) {
+            throw new IllegalArgumentException("Requested capacity exceeds hard cap: " + needed);
+        }
+        if (buffer.capacity() >= needed) {
+            return;
+        }
 
-    /**
-     * Blocks until exactly 'size' bytes are loaded into the buffer.
-     */
-    private void fillBuffer(int size) throws IOException {
-        buffer.clear();
-        buffer.limit(size);
+        int newCapacity = nextPowerOfTwo(needed);
+        ByteBuffer newBuffer = ByteBuffer.allocateDirect(newCapacity);
+        this.buffer = newBuffer;
+        this.mem = MemoryUtils.wrap(newBuffer);
+    }
 
-        while (buffer.hasRemaining()) {
-            int n = socketChannel.read(buffer);
+    private int estimateNeededCapacity() {
+        // crude retry growth target when serialization overflowed
+        return Math.max(buffer.capacity() * 2, HEADER_SIZE + 1024);
+    }
 
+    private static int nextPowerOfTwo(int x) {
+        int n = 1;
+        while (n < x) {
+            n <<= 1;
+        }
+        return n;
+    }
+
+    private void readFully(ByteBuffer dst) throws IOException {
+        while (dst.hasRemaining()) {
+            int n = socketChannel.read(dst);
             if (n == -1) {
-                throw new EOFException("Socket closed while expecting " + size + " bytes");
+                throw new EOFException("Socket closed while reading " + dst.limit() + " bytes");
             }
+        }
+    }
+
+    private void writeFully(ByteBuffer src) throws IOException {
+        while (src.hasRemaining()) {
+            socketChannel.write(src);
         }
     }
 
@@ -177,5 +194,16 @@ public class TCPObjectSocket {
 
     public boolean isClosed() {
         return socketChannel == null || !socketChannel.isOpen();
+    }
+
+    public void restoreInitialCapacity() {
+        if (buffer.capacity() != DEFAULT_CAPACITY) {
+            buffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY);
+            mem = MemoryUtils.wrap(buffer);
+        }
+
+        buffer.clear();
+        mem.readerIndex(0);
+        mem.writerIndex(0);
     }
 }

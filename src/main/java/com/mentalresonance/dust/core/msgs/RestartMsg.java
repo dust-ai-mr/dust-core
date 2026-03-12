@@ -28,22 +28,9 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-@Getter
-public class RestartMsg implements Serializable {
-
-    /**
-     * Handy (optional) message
-     */
-    final Serializable msg;
-
+public record RestartMsg(Serializable msg) implements Serializable {
     /**
      * Constructor
      */
-    public RestartMsg() { msg = null; }
-
-    /**
-     * Constructor
-     * @param msg wrapped msg
-     */
-    public RestartMsg(Serializable msg) { this.msg = msg; }
+    public RestartMsg() { this(null); }
 }

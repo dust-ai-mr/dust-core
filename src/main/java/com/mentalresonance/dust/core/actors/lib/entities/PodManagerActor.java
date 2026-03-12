@@ -145,10 +145,11 @@ public class PodManagerActor extends PersistentActor {
      * @return ActorBehavior
      */
     @Override
+    @SuppressWarnings("unchecked")
     protected ActorBehavior recoveryBehavior() {
         return message -> {
-            if (Objects.requireNonNull(message) instanceof SnapshotMsg msg) {
-                kids = (HashMap<String, Boolean>) msg.getSnapshot();
+            if (Objects.requireNonNull(message) instanceof SnapshotMsg(Serializable snapshot)) {
+                kids = (HashMap<String, Boolean>) snapshot;
                 if (null == kids) kids = new HashMap<>();
                 for (String name : kids.keySet()) {
                     watch(actorOf(childProps, name));
@@ -179,12 +180,12 @@ public class PodManagerActor extends PersistentActor {
                     from my children.
                  */
                 case DeleteChildMsg msg -> {
-                    kids.remove(msg.getName());
+                    kids.remove(msg.name());
                     handleMsg(msg);  // Will actually try to kill the child - which may or may not exist
                     saveSnapshot(kids);
                 }
                 case CreateChildMsg msg -> {
-                    String name = msg.getName();
+                    String name = msg.name();
                     if (kids.containsKey(name)) {
                         log.warn("{}: CreateChildMsg from {}. Child '{}' already exists.", self.path, sender, name);
                     }
@@ -193,8 +194,8 @@ public class PodManagerActor extends PersistentActor {
                         if (null != child) {
                             watch(child);
                             kids.put(name, true);
-                            if (null != msg.getMsg()) {
-                                child.tell(msg.getMsg(), sender);
+                            if (null != msg.msg()) {
+                                child.tell(msg.msg(), sender);
                             }
                             saveSnapshot(kids);
                             if (notifyCreatedChild && null != sender) {
@@ -218,7 +219,7 @@ public class PodManagerActor extends PersistentActor {
                     log.error("{}: ActorInstantiationException: {}", self.path, msg.getMessage());
                 }
                 case ChildExceptionMsg msg -> {
-                    log.error("{}: ChildException {}", self.path, msg.getException().getMessage());
+                    log.error("{}: ChildException {}", self.path, msg.exception().getMessage());
                     unWatch(sender);
                     kids.remove(sender.name);
                 }

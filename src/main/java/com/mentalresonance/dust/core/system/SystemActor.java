@@ -71,5 +71,6 @@ public class SystemActor extends Actor {
         supervisor = new SupervisionStrategy(SupervisionStrategy.SS_RESTART, SupervisionStrategy.MODE_ONE_FOR_ONE);
         actorOf(DeadLetterActor.props(logDeadLetters), DEAD_LETTERS);
         actorOf(PubSubActor.props(), EVENTS);
+        Thread.sleep(100);  // Ensure DeadletterActor is fully started otherwise can get recursion
     }
 }
