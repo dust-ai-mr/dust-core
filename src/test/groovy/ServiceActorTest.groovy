@@ -4,6 +4,7 @@ import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.ServiceManagerActor
+import com.mentalresonance.dust.core.msgs.StartMsg
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
@@ -46,6 +47,7 @@ import spock.lang.Specification
 @CompileStatic
 class ServiceActorTest extends Specification {
 
+	static int sent = 0, replied = 0
 	static class SquareMsg implements Serializable {
 		int number, square
 	}
@@ -107,20 +109,23 @@ class ServiceActorTest extends Specification {
 		void preStart() {
 			// Create the service manager allowing at most 10 service actors at any given time
 			squareRef = actorOf(ServiceManagerActor.props(SquareServiceActor.props(), 10), 'square')
-			// Tell it to square the firs limit integers
-			(1..limit).each {
-				squareRef.tell(new SquareMsg(number: it), self)
-			}
+			tellSelf(new StartMsg())
 		}
 
 		@Override
 		ActorBehavior createBehavior() {
 			(Serializable message) -> {
 				switch(message) {
+					case StartMsg:
+						if (sent != limit) {
+							squareRef.tell(new SquareMsg(number: ++sent), self)
+							tellSelf(message)
+						}
+						break
+
 					case SquareMsg:
 						// Response from ServiceManagerActor with our squre
 						SquareMsg msg = (SquareMsg)message
-
 						results[msg.number] = msg.square
 
 						if (results.size() == limit) {

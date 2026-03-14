@@ -53,7 +53,8 @@ public class TCPObjectSocket {
                 this.socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                 this.socketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                 return this;
-            } catch (IOException e) {
+            }
+            catch (IOException e) {
                 log.error("Failed to configure SocketChannel", e);
             }
         }
@@ -132,7 +133,8 @@ public class TCPObjectSocket {
         try {
             Object result = fory.deserialize(mem);
             return result;
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             log.error("Failed to deserialize {} size {}", e, payloadSize);
             throw e;
         }

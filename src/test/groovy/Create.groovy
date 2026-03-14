@@ -16,7 +16,6 @@ class Create extends Specification {
 
 	static ActorSystem system
 	static ActorContext context
-
 	static success = false
 
 	/*
@@ -33,13 +32,12 @@ class Create extends Specification {
 	def "Multiple Creation"() {
 		given:
 			def time = System.currentTimeMillis()
+			def loops = 1000, size=1000
 		when:
-			time = System.currentTimeMillis()
-			// Now create 5 million actors in 500 batches
-			log.info "Starting 1000 * 5000"
-			system.context.actorOf(CreatorMonitorActor.props(1000, 5000)).waitForDeath()
+			log.info "Starting and destroying $loops * $size Actors"
+			system.context.actorOf(CreatorMonitorActor.props(loops, size)).waitForDeath()
 			time = System.currentTimeMillis() - time
-			log.info "5,000,000 done as 500 batches of 10000.  ${ 5000000 / (time / 1000.0)} actors created / second"
+			log.info "${loops*size} done as $loops batches of $size in ${time} ms.  ${ (loops*size) / (time / 1000.0)} actors created / second"
 			success = system.stop()
 		then:
 			success

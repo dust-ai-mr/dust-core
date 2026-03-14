@@ -43,6 +43,5 @@ public class CreatorActor extends Actor {
                  throw new RuntimeException(e);
              }
          }
-         stopSelf();
     }
 }

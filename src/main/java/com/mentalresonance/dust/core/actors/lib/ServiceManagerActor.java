@@ -120,5 +120,5 @@ public class ServiceManagerActor extends Actor {
     }
 
     // Don't use StartMsg() since we may be sending that to our service workers !
-    static class _ServiceManagerPumpMsg implements Serializable {}
+    static record _ServiceManagerPumpMsg() implements Serializable {}
 }

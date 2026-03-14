@@ -22,6 +22,10 @@ import spock.lang.Specification
  *
  */
 
+/*
+    Parent Actor dies and so child will - but parent will have passed its exception on to the child so it can
+    see it ...
+ */
 @Slf4j
 class MessyShutdown extends Specification {
 

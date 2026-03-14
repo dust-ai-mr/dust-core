@@ -152,7 +152,7 @@ public class TCPObjectServer {
             log.error("Error handling client {}: {}", client, e.getMessage());
         }
         finally {
-            log.warn("Closing connection to {}", client);
+            log.trace("Closing connection to {}", client);
             if (socket != null) {
                 returnSocket(socket);
             }

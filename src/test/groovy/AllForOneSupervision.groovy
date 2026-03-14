@@ -53,8 +53,8 @@ class AllForOneSupervision extends Specification {
 				{
 					case ChildExceptionMsg -> {
 						ChildExceptionMsg msg = (ChildExceptionMsg) messsage
-						log.info "${msg.child} threw exception. Supervision=$supervisor  Will stop in 5 second"
-						scheduleIn(new PoisonPill(), 5000)
+						log.info "${msg.child} threw exception. Supervision=$supervisor  Will stop in 1 second"
+						scheduleIn(new PoisonPill(), 1000)
 					}
 					default -> super.createBehavior().onMessage(messsage)
 				}
@@ -76,8 +76,7 @@ class AllForOneSupervision extends Specification {
 
 		@Override
 		void postStop() {
-			if (! ActorSystem.isStopping)
-				stopped = true
+			stopped = true
 			log.info "${self.path} stopped"
 		}
 
@@ -107,7 +106,8 @@ class AllForOneSupervision extends Specification {
 
 	/*
 	 Create three tests - one for each strategy (stop, resume or restart). Since mode is all for one the chosen
-	 strategy will be applied to the failing Actor and its siblings
+	 strategy will be applied to the failing Actor and its siblings.
+	 Note: Even on resume the Actor will stop normally so it will call postStop() and our stopped flag will be set
 	 */
 	def "Stop Supervision"() {
 		when:
@@ -118,7 +118,7 @@ class AllForOneSupervision extends Specification {
 		then:
 			(! resumed)
 			(! restarted)
-			(! stopped)
+			stopped
 	}
 
 	def "Resume Supervision"() {
@@ -129,7 +129,7 @@ class AllForOneSupervision extends Specification {
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			(! stopped)
+			stopped
 			(! restarted)
 			resumed
 	}
@@ -142,7 +142,7 @@ class AllForOneSupervision extends Specification {
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			(! stopped)
+			stopped
 			(! resumed)
 			restarted
 	}

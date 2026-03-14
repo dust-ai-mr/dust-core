@@ -27,9 +27,9 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.LockSupport;
 
 import static com.mentalresonance.dust.core.net.ActorSystemConnectionManager.WrappedTCPObjectSocket;
 
@@ -69,12 +69,12 @@ public class ActorRef implements Serializable {
     /**
      * The thread running the Actor if local else null
      */
-    public transient Thread thread = null;
+    public transient volatile Thread thread = null;
 
     /**
      * Mailbox if local else null
      */
-    public transient Actor.MailBox mailBox = null;
+    public transient volatile Actor.MailBox mailBox = null;
 
     /**
      * Path down to root context /. Always ends in '/'
@@ -171,7 +171,7 @@ public class ActorRef implements Serializable {
     public boolean tell(Serializable message, ActorRef sender) {
         boolean success = true;
 
-        // log.trace("Delivering {} to {} mailbox from {}", message, this, sender);
+        // log.info("Delivering {} to {} mailbox from {}", message, this, sender);
 
         try {
             SentMessage sentMessage;
@@ -185,15 +185,13 @@ public class ActorRef implements Serializable {
                 message = new DeadLetter(message, path, sender);
             }
 
-
             if (mailBox != null) { // Local
                 sentMessage = new SentMessage(message, sender);
                 if (! mailBox.dead) {
-                    // log.trace("Adding:{} to mailbox:{}  queue presize={}", message, this, mailBox.queue.size());
-                    mailBox.queue.add(sentMessage);
+                    mailBox.queue.offer(sentMessage);
                 }
                 else {
-                    log.trace("{} mailbox is dead .. restarted ??", this);
+                    log.warn("{} mailbox is dead .. restarted ??", this);
                     if (!PersistentActor.isInShutdown()) { // May be in shutdown but false -- need to fix this
                         ActorRef deadLetterRef = context.getDeadLetterActor();
                         if (deadLetterRef != null && !deadLetterRef.mailBox.dead) { // We may be globally stopping
@@ -201,6 +199,7 @@ public class ActorRef implements Serializable {
                         }
                     }
                 }
+                LockSupport.unpark(thread);
             }
             else {
                 if (! path.contains(":"))
@@ -381,25 +380,6 @@ public class ActorRef implements Serializable {
      */
     public String greatGrandParentName() {
         return ancestors[ancestors.length - 4];
-    }
-
-    /**
-     * Put the stashed messages at the *front* of the mailbox
-     * @param stash
-     */
-    public void unstashAll(List<SentMessage> stash) {
-        Object[] newMsgs;
-
-        mailBox.queue.putLock.lock();
-
-        newMsgs = mailBox.queue.toArray();
-        mailBox.queue.clear();
-        mailBox.queue.addAll(stash);
-
-        for (Object o : newMsgs) {
-            mailBox.queue.add((SentMessage) o);
-        }
-        mailBox.queue.putLock.unlock();
     }
 
     private void makeAncestors() {

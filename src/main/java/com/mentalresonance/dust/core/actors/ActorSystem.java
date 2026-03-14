@@ -237,12 +237,20 @@ public class ActorSystem {
     private Guardian startGuardian(ActorRef ref) {
 
         Actor actor = guardianRef.actor;
+        java.util.concurrent.CountDownLatch startupLatch = new java.util.concurrent.CountDownLatch(1);
+
         ref.mailBox = new Actor.MailBox();
-        ref.thread = Thread.startVirtualThread(actor);
+        ref.thread = Thread.ofVirtual().start(() -> {
+            // Wait until the parent thread finishes setting up the 'ref'
+            try {
+                startupLatch.await();
+            } catch (Exception e) {}
+            actor.run();
+        });
+        startupLatch.countDown();
         ref.thread.setName("GuardianActor");
         actor.setParent(null);
         actor.setSelf(ref);
-
         return new Guardian(ref, (GuardianActor) actor);
     }
 
