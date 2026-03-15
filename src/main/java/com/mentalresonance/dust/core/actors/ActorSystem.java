@@ -28,6 +28,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
@@ -349,9 +350,17 @@ public class ActorSystem {
                     target.setIsDeadLetter(true);
                 }
                 if (null != sender) {
-                    sender = context.actorSelection(sender.path);
+                    // Sender has everything but a context to work with
+                    sender.context = context;
                 }
-                target.tell(msg.message(), sender);
+
+                Serializable message = msg.message();
+
+                // Likewise ActorRefs
+                if (message instanceof ActorRef) {
+                    ((ActorRef)message).context = context;
+                }
+                target.tell(message, sender);
             }
             catch (Exception e) {
                 log.error("Error in server(): {}", e.getMessage());

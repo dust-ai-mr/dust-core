@@ -20,10 +20,13 @@
 package com.mentalresonance.dust.core.actors.lib;
 
 import com.mentalresonance.dust.core.actors.Actor;
+import com.mentalresonance.dust.core.actors.ActorBehavior;
 import com.mentalresonance.dust.core.actors.Props;
 
+import java.io.Serializable;
+
 /**
- * Like it says on the can. This Actor just uses the default Actor behavior, adding nothing itself.
+ * Like it says on the can. This Actor just uses the default Actor behavior, ignoring everything else.
  *
  *  @author alanl
  */
@@ -40,4 +43,9 @@ public class NullActor extends Actor {
      * Constructor
      */
     public NullActor() {}
+
+    @Override
+    public ActorBehavior createBehavior() {
+        return (Serializable message) -> { };
+    }
 }

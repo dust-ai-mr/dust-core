@@ -44,10 +44,8 @@ import static com.mentalresonance.dust.core.net.ActorSystemConnectionManager.Wra
  */
 @Slf4j
 public class ActorRef implements Serializable {
-
-    final transient ActorContext context;
-
-    final transient ActorSystemConnectionManager actorSystemConnectionManager;
+    @Setter
+    transient ActorContext context;
 
     transient Actor actor;
 
@@ -84,10 +82,7 @@ public class ActorRef implements Serializable {
      * Path down to root context /. Always ends in '/'
      */
     public String path;
-    /**
-     * Unique id for this ActorRef. Used by TCPObjectServer to serialize messages without needing Acks
-     */
-    public String id = null;
+
     /**
      * Array of names from / down to me
      */
@@ -153,10 +148,6 @@ public class ActorRef implements Serializable {
         this.context = context;
         this.host = context.hostContext;
         this.actor = actor;
-        this.actorSystemConnectionManager = context.system.actorSystemConnectionManager;
-        if (null != host) try {
-            this.id = StringUtils.hash(path, "MD5");
-        } catch(Exception ignored) {}
         makeAncestors();
     }
 
@@ -172,10 +163,6 @@ public class ActorRef implements Serializable {
         this.name = name;
         this.host = context.hostContext;
         this.actor = actor;
-        this.actorSystemConnectionManager = context.system.actorSystemConnectionManager;
-        if (null != host) try {
-            this.id = StringUtils.hash(path, "MD5");
-        } catch(Exception ignored) {}
         makeAncestors();
     }
 
@@ -257,9 +244,11 @@ public class ActorRef implements Serializable {
 
         for (int i = 0; i < 10; i++) {
             try {
-                wrappedTCPObjectSocket = actorSystemConnectionManager.getSocket(uri);
+                wrappedTCPObjectSocket = context.system.actorSystemConnectionManager.getSocket(uri);
                 socket = wrappedTCPObjectSocket.tcpObjectSocket;
                 socket.send(sentMessage);
+                if (null == sentMessage.sender())
+                    socket.receive();
                 return;
             }
             catch (InterruptedException ie) {
@@ -270,12 +259,12 @@ public class ActorRef implements Serializable {
             catch (Exception e) {
                 log.error("Could not send message {} to {}: {}", sentMessage.message(), path, e);
                 lastException = e;
-                actorSystemConnectionManager.flushPool(uri);
+                context.system.actorSystemConnectionManager.flushPool(uri);
                 Thread.sleep(5000L);
             }
             finally {
                 if (null != wrappedTCPObjectSocket)
-                    actorSystemConnectionManager.returnSocket(wrappedTCPObjectSocket);
+                    context.system.actorSystemConnectionManager.returnSocket(wrappedTCPObjectSocket);
             }
         }
         throw lastException;
@@ -395,6 +384,27 @@ public class ActorRef implements Serializable {
      */
     public String greatGrandParentName() {
         return ancestors[ancestors.length - 4];
+    }
+
+    @Override
+    public int hashCode() {
+        if (mailBox != null)
+            return super.hashCode();
+        else {
+            return path.hashCode();
+        }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (mailBox != null)
+            return super.equals(o);
+        else {
+            if (!(o instanceof ActorRef))
+                return false;
+            else
+                return path.hashCode() == o.hashCode();
+        }
     }
 
     private void makeAncestors() {

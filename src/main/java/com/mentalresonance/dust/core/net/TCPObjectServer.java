@@ -53,10 +53,10 @@ public class TCPObjectServer {
     final int CONNECTIONS = 32;
     LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS);
 
-    Cache<String, QandThread> workerBees = Caffeine
+    Cache<Integer, QandThread> workerBees = Caffeine
         .newBuilder()
         .maximumSize(CONNECTIONS)
-        .removalListener((String key, QandThread qat, RemovalCause cause) -> {
+        .removalListener((Integer key, QandThread qat, RemovalCause cause) -> {
             if (qat != null) {
                 log.warn("WorkerBee {} removed from cache on port {} {}", key, actorSystem.getPort(), cause);
                 qat.thread.interrupt();
@@ -154,16 +154,20 @@ public class TCPObjectServer {
 
                 if (sentMsg == null) break; // Client sent termination signal (length 0)
 
-                String id = sentMsg.sender().id;
-
-                qandThread = workerBees.get(id, k -> {
-                    WorkerBee workerBee = new WorkerBee(k);
-                    Thread workerBeeThread = Thread.startVirtualThread(workerBee);
-
-                    return new QandThread(workerBee.queue, workerBeeThread);
-                });
-                qandThread.queue.offer(sentMsg);
-                LockSupport.unpark(qandThread.thread);
+                if (sentMsg.sender() != null) {
+                    qandThread = workerBees.get(sentMsg.sender().hashCode(), k -> {
+                        WorkerBee workerBee = new WorkerBee(k);
+                        Thread workerBeeThread = Thread.startVirtualThread(workerBee);
+                        return new QandThread(workerBee.queue, workerBeeThread);
+                    });
+                    qandThread.queue.offer(sentMsg);
+                    LockSupport.unpark(qandThread.thread);
+                }
+                else {  // Have to serialize the old way ... :(
+                    actorSystem.connectionAccepted(sentMsg);
+                    // Ack
+                    socket.send(null);
+                }
             }
         }
         catch (InterruptedException e) {
@@ -203,9 +207,9 @@ public class TCPObjectServer {
 
     private class WorkerBee implements Runnable {
         public final MpscLinkedQueue<SentMessage> queue = new MpscLinkedQueue<>();
-        String id;
+        int id;
 
-        WorkerBee(String id) {
+        WorkerBee(int id) {
             this.id = id;
         }
 
