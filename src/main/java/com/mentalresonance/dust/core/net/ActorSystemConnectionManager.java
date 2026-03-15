@@ -136,12 +136,10 @@ public class ActorSystemConnectionManager {
 
         while (--retries >= 0) {
             try {
-                //synchronized (SocketLock) {
-                    if (!remoteActorSystems.containsKey(key)) {
-                        pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
-                        remoteActorSystems.put(key, pool);
-                    }
-                //}
+                if (!remoteActorSystems.containsKey(key)) {
+                    pool = new ConnectionPool(SocketsPerRemote, key, uri.getHost(), uri.getPort());
+                    remoteActorSystems.put(key, pool);
+                }
                 return remoteActorSystems.get(key).acquire(uri.getPath());
             }
             catch (IOException e) {

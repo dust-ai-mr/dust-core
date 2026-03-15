@@ -33,7 +33,6 @@ import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -263,7 +262,7 @@ public class ActorContext {
         ActorRef deadLetter = getDeadLetterActor();
         ActorRef ref = new ActorRef(path, this, deadLetter.actor);
         ref.isDeadLetter = true;
-        ref.thread = deadLetter.thread;
+        ref.mailboxThread = deadLetter.mailboxThread;
         ref.mailBox = deadLetter.mailBox;
         return ref;
     }
@@ -275,7 +274,7 @@ public class ActorContext {
      */
     public void stop(ActorRef ref, Throwable cause) {
         ref.isException = cause;
-        ref.thread.interrupt();
+        ref.mailboxThread.interrupt();
     }
 
     /**

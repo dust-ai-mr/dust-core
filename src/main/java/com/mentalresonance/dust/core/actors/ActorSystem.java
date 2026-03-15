@@ -22,7 +22,6 @@ package com.mentalresonance.dust.core.actors;
 import com.mentalresonance.dust.core.net.TCPObjectServer;
 import com.mentalresonance.dust.core.services.PersistenceService;
 import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
-import com.mentalresonance.dust.core.net.ActorSystemConnectionManager.WrappedTCPObjectSocket;
 import com.mentalresonance.dust.core.system.GuardianActor;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
 import lombok.Getter;
@@ -198,7 +197,7 @@ public class ActorSystem {
      * @return Guardian Actor mailbox thread
      */
     public Thread systemThread() {
-        return guardianRef.thread;
+        return guardianRef.mailboxThread;
     }
 
     private void init(boolean logDeadLetters)
@@ -240,7 +239,7 @@ public class ActorSystem {
         java.util.concurrent.CountDownLatch startupLatch = new java.util.concurrent.CountDownLatch(1);
 
         ref.mailBox = new Actor.MailBox();
-        ref.thread = Thread.ofVirtual().start(() -> {
+        ref.mailboxThread = Thread.ofVirtual().start(() -> {
             // Wait until the parent thread finishes setting up the 'ref'
             try {
                 startupLatch.await();
@@ -248,7 +247,7 @@ public class ActorSystem {
             actor.run();
         });
         startupLatch.countDown();
-        ref.thread.setName("GuardianActor");
+        ref.mailboxThread.setName("GuardianActor");
         actor.setParent(null);
         actor.setSelf(ref);
         return new Guardian(ref, (GuardianActor) actor);
@@ -334,7 +333,7 @@ public class ActorSystem {
         return haveStopped;
     }
 
-    public void connectionAccepted(SentMessage msg, TCPObjectServer server) {
+    public void connectionAccepted(SentMessage msg) {
         Object o = null;
         try {
             try {
@@ -362,36 +361,6 @@ public class ActorSystem {
         catch (Exception e) {
             log.error("Error in outer server(): {} - {}", e.getMessage(), o);
         }
-    }
-
-
-    /**
-     * Get a connection to the ActorSystem at the remote path
-     *
-     * @param uri for remote system
-     * @return wrapped Connection
-     * @throws IOException on io issues
-     * @throws InterruptedException if interrupted
-     */
-    public WrappedTCPObjectSocket getSocket(URI uri) throws IOException, InterruptedException {
-        return actorSystemConnectionManager.getSocket(uri);
-    }
-
-    /**
-     * Returns wrapped socket to the pool
-     *
-     * @param objectSocket to return to pool
-     */
-    public void returnSocket(WrappedTCPObjectSocket objectSocket) {
-        actorSystemConnectionManager.returnSocket(objectSocket);
-    }
-
-    /**
-     * Something has gone wrong. Try to close all connections to Actor system
-     * defined by URI.
-     */
-    public void flushPool(URI uri) throws Exception {
-        actorSystemConnectionManager.flushPool(uri);
     }
 
     private static class Guardian {

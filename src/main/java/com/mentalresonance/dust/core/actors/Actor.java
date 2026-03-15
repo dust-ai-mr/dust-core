@@ -236,7 +236,7 @@ public class Actor implements Runnable {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             // Someone is trying to stop us. So interrupt us again to actually start the stopping process
-            self.thread.interrupt();
+            self.mailboxThread.interrupt();
         }
     }
 
@@ -484,7 +484,7 @@ public class Actor implements Runnable {
                                  * If the child is the original thrower it will be sat waiting on the lock
                                  * if not we can interrupt it anyway having set its lifecycle state
                                  */
-                                child.thread.interrupt();
+                                child.mailboxThread.interrupt();
                                 /*
                                  * Restarting is tricky - we want the sender ref to still be valid since it is held by many
                                  * other Actors, so we need to just 'adjust' it to match the new conditions.
@@ -493,7 +493,7 @@ public class Actor implements Runnable {
                                  * LOCK (via the interrupt above) and set its lifecycle to LC_RESTART so check for both
                                  */
                                 if (child.lifecycle == ActorRef.LC_INTERRUPT_RESTART || child.lifecycle == ActorRef.LC_RESTART) {
-                                    child.thread.join(); // Wait for child to stop
+                                    child.mailboxThread.join(); // Wait for child to stop
                                     children.put(child.name,  restart(child)); // Restart it and make it my child
                                 }
                             }
@@ -576,7 +576,7 @@ public class Actor implements Runnable {
          */
 
         if (self.lifecycle == ActorRef.LC_RESUME) {
-            self.thread = Thread.startVirtualThread(this);
+            self.mailboxThread = Thread.startVirtualThread(this);
             return;
         }
         /*
@@ -776,7 +776,7 @@ public class Actor implements Runnable {
      */
     protected void unstashAll() {
         useStash = true;
-        LockSupport.unpark(self.thread);
+        LockSupport.unpark(self.mailboxThread);
     }
     /**
      * Sends the message to me in ~millis milliseconds
@@ -877,7 +877,7 @@ public class Actor implements Runnable {
             actor.parent = self;
             actor.grandParent = parent;
             actor.self = ref;
-            ref.thread = Thread.ofVirtual().start(() -> {
+            ref.mailboxThread = Thread.ofVirtual().start(() -> {
                 try {
                     // Wait until the parent thread finishes setting up the 'ref'
                     startupLatch.await();
@@ -1056,7 +1056,7 @@ public class Actor implements Runnable {
 
             ref.actor = actor;
             ref.lifecycle = ActorRef.LC_RESTART;
-            ref.thread = Thread.startVirtualThread(actor);
+            ref.mailboxThread = Thread.startVirtualThread(actor);
             // log.trace("{} restarted ${}", self.path, ref);
         }
         catch (Exception e) {

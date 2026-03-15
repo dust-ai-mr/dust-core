@@ -22,7 +22,9 @@ package com.mentalresonance.dust.core.actors;
 import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
+import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.net.TCPObjectSocket;
+import com.mentalresonance.dust.core.utils.StringUtils;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
@@ -45,12 +47,14 @@ public class ActorRef implements Serializable {
 
     final transient ActorContext context;
 
+    final transient ActorSystemConnectionManager actorSystemConnectionManager;
+
     transient Actor actor;
 
     /**
      * If I am telling remotely then recipient needs to be able to find me via host + path
      */
-    String host = null;
+    final String host;
 
     /**
      * If true then this is actually a ref to dead letters (i.e. path does not exist.
@@ -69,7 +73,7 @@ public class ActorRef implements Serializable {
     /**
      * The thread running the Actor if local else null
      */
-    public transient volatile Thread thread = null;
+    public transient volatile Thread mailboxThread = null;
 
     /**
      * Mailbox if local else null
@@ -81,6 +85,10 @@ public class ActorRef implements Serializable {
      */
     public String path;
     /**
+     * Unique id for this ActorRef. Used by TCPObjectServer to serialize messages without needing Acks
+     */
+    public String id = null;
+    /**
      * Array of names from / down to me
      */
     public String[] ancestors;
@@ -88,7 +96,6 @@ public class ActorRef implements Serializable {
      * Name of Actor if local else null
      */
     public String name = null;
-
     /**
      * Props that created this Actor if local else null
      */
@@ -135,15 +142,21 @@ public class ActorRef implements Serializable {
     public final static int LC_INTERRUPT_RESTART = 6;
 
     /**
-     * Construct ActorRef in the context to Actor at path
+     * Construct ActorRef in the context to Actor at path. If actor is null then
+     * path is to a remote Actor
      * @param path of Actor
      * @param context to use
+     * @param actor to use
      */
     public ActorRef(String path, ActorContext context, Actor actor) {
         this.path = path;
         this.context = context;
         this.host = context.hostContext;
         this.actor = actor;
+        this.actorSystemConnectionManager = context.system.actorSystemConnectionManager;
+        if (null != host) try {
+            this.id = StringUtils.hash(path, "MD5");
+        } catch(Exception ignored) {}
         makeAncestors();
     }
 
@@ -159,6 +172,10 @@ public class ActorRef implements Serializable {
         this.name = name;
         this.host = context.hostContext;
         this.actor = actor;
+        this.actorSystemConnectionManager = context.system.actorSystemConnectionManager;
+        if (null != host) try {
+            this.id = StringUtils.hash(path, "MD5");
+        } catch(Exception ignored) {}
         makeAncestors();
     }
 
@@ -189,6 +206,7 @@ public class ActorRef implements Serializable {
                 sentMessage = new SentMessage(message, sender);
                 if (! mailBox.dead) {
                     mailBox.queue.offer(sentMessage);
+                    LockSupport.unpark(mailboxThread);
                 }
                 else {
                     log.warn("{} mailbox is dead .. restarted ??", this);
@@ -199,7 +217,6 @@ public class ActorRef implements Serializable {
                         }
                     }
                 }
-                LockSupport.unpark(thread);
             }
             else {
                 if (! path.contains(":"))
@@ -240,11 +257,9 @@ public class ActorRef implements Serializable {
 
         for (int i = 0; i < 10; i++) {
             try {
-                wrappedTCPObjectSocket = context.system.getSocket(uri);
+                wrappedTCPObjectSocket = actorSystemConnectionManager.getSocket(uri);
                 socket = wrappedTCPObjectSocket.tcpObjectSocket;
                 socket.send(sentMessage);
-                // Expecting app level "ACK" from server
-                socket.receive();
                 return;
             }
             catch (InterruptedException ie) {
@@ -255,12 +270,12 @@ public class ActorRef implements Serializable {
             catch (Exception e) {
                 log.error("Could not send message {} to {}: {}", sentMessage.message(), path, e);
                 lastException = e;
-                context.system.flushPool(uri);
+                actorSystemConnectionManager.flushPool(uri);
                 Thread.sleep(5000L);
             }
             finally {
                 if (null != wrappedTCPObjectSocket)
-                    context.system.returnSocket(wrappedTCPObjectSocket);
+                    actorSystemConnectionManager.returnSocket(wrappedTCPObjectSocket);
             }
         }
         throw lastException;
@@ -345,10 +360,10 @@ public class ActorRef implements Serializable {
      */
     public void waitForDeath() throws Exception {
         try {
-            if (null == thread) {
+            if (null == mailboxThread) {
                 throw new Exception("%s is remote. Cannot waitForDeath on remote Actors".formatted(path));
             }
-            thread.join();
+            mailboxThread.join();
         }
         catch (InterruptedException e) {
             log.error("%s waitForDeath was interrupted !!".formatted(path));

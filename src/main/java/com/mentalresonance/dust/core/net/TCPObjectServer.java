@@ -19,10 +19,14 @@
 
 package com.mentalresonance.dust.core.net;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
-import com.mentalresonance.dust.core.msgs.PingMsg;
 import lombok.extern.slf4j.Slf4j;
+import org.jctools.queues.MpscLinkedQueue;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -32,6 +36,7 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Runs a server to receive remote messages. Spawns a new virtual thread to handle a new connection but
@@ -46,7 +51,19 @@ public class TCPObjectServer {
     Thread serverThread;
     private ActorSystem actorSystem;
     final int CONNECTIONS = 32;
-    LinkedBlockingQueue<TCPObjectSocket> workers = new LinkedBlockingQueue<>(CONNECTIONS);
+    LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS);
+
+    Cache<String, QandThread> workerBees = Caffeine
+        .newBuilder()
+        .maximumSize(CONNECTIONS)
+        .removalListener((String key, QandThread qat, RemovalCause cause) -> {
+            if (qat != null) {
+                log.warn("WorkerBee {} removed from cache on port {} {}", key, actorSystem.getPort(), cause);
+                qat.thread.interrupt();
+            }
+        })
+        .build();
+
     /**
      * A server
      * @param port on port number
@@ -63,7 +80,7 @@ public class TCPObjectServer {
         this.actorSystem = actorSystemConnectionManager.getActorSystem();
 
         for (int i = 0; i < CONNECTIONS; ++i) {
-            workers.add(new TCPObjectSocket());
+            workerSockets.add(new TCPObjectSocket());
         }
     }
 
@@ -78,8 +95,6 @@ public class TCPObjectServer {
                 ServerSocketChannel server = null;
                 try {
                     server = ServerSocketChannel.open();
-                    //server.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-                    //server.setOption(StandardSocketOptions.SO_REUSEPORT, true);
                     server.bind(new InetSocketAddress(port));
                     log.info ("Remoting Server started on socket {}", server.socket());
                     while (true)
@@ -117,9 +132,11 @@ public class TCPObjectServer {
      */
     protected void connectionServer(ActorSystem actorSystem, SocketChannel client) {
         TCPObjectSocket socket = null;
+        QandThread qandThread;
+
         try {
             // Poll instead of take to avoid indefinite blocking if the pool is exhausted
-            socket = workers.poll(5, TimeUnit.SECONDS);
+            socket = workerSockets.poll(5, TimeUnit.SECONDS);
             if (socket == null) {
                 log.warn("Server saturated: No available worker sockets");
                 client.close();
@@ -133,15 +150,20 @@ public class TCPObjectServer {
 
             while (!terminated)
             {
-                Object obj = socket.receive();
+                SentMessage sentMsg = (SentMessage)socket.receive();
 
-                if (obj == null) break; // Client sent termination signal (length 0)
+                if (sentMsg == null) break; // Client sent termination signal (length 0)
 
-                //if (obj instanceof SentMessage msg) {
-                    actorSystem.connectionAccepted((SentMessage)obj, this);
-                    // Ack
-                    socket.send(null);
-                //}
+                String id = sentMsg.sender().id;
+
+                qandThread = workerBees.get(id, k -> {
+                    WorkerBee workerBee = new WorkerBee(k);
+                    Thread workerBeeThread = Thread.startVirtualThread(workerBee);
+
+                    return new QandThread(workerBee.queue, workerBeeThread);
+                });
+                qandThread.queue.offer(sentMsg);
+                LockSupport.unpark(qandThread.thread);
             }
         }
         catch (InterruptedException e) {
@@ -162,7 +184,7 @@ public class TCPObjectServer {
     public void returnSocket(TCPObjectSocket socket) {
         socket.close();
         socket.restoreInitialCapacity();
-        workers.offer(socket);
+        workerSockets.offer(socket);
     }
 
     /**
@@ -178,4 +200,31 @@ public class TCPObjectServer {
             log.error("Stopping server: %s".formatted(e.getMessage()));
         }
     }
+
+    private class WorkerBee implements Runnable {
+        public final MpscLinkedQueue<SentMessage> queue = new MpscLinkedQueue<>();
+        String id;
+
+        WorkerBee(String id) {
+            this.id = id;
+        }
+
+        public void run() {
+            SentMessage sentMessage;
+            while(true)
+            {
+                if (Thread.currentThread().isInterrupted()) {
+                    break;
+                }
+                if (null != (sentMessage = queue.poll())) {
+                    actorSystem.connectionAccepted(sentMessage);
+                } else
+                    LockSupport.park();
+
+            }
+            workerBees.invalidate(id);
+        }
+    }
+
+    record QandThread(MpscLinkedQueue<SentMessage> queue, Thread thread) {}
 }
