@@ -242,7 +242,7 @@ public class ActorSystemConnectionManager {
             WrappedTCPObjectSocket which have still to open a connection (and reduce load on the server)
          */
         void restore(WrappedTCPObjectSocket objectSocket) {
-            connections.addFirst(objectSocket); // Return socket
+            connections.add(objectSocket); // Return socket
         }
 
         /*

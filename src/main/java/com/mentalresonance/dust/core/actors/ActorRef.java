@@ -22,9 +22,7 @@ package com.mentalresonance.dust.core.actors;
 import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
-import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.net.TCPObjectSocket;
-import com.mentalresonance.dust.core.utils.StringUtils;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
@@ -136,6 +134,8 @@ public class ActorRef implements Serializable {
      */
     public final static int LC_INTERRUPT_RESTART = 6;
 
+    public static int NullActorRefID = "NULL".hashCode();  // This is unique
+
     /**
      * Construct ActorRef in the context to Actor at path. If actor is null then
      * path is to a remote Actor
@@ -209,7 +209,7 @@ public class ActorRef implements Serializable {
                 if (! path.contains(":"))
                     path = host + path;
                 try {
-                    sendMessage(new SentMessage(message, sender, path), path);
+                    sendRemoteMessage(new SentMessage(message, sender, path), path);
                 }
                 catch (InterruptedException ie) {
                     log.error("Could not get socket to {}: Interrupted", path);
@@ -236,7 +236,7 @@ public class ActorRef implements Serializable {
     /*
         Try to send message. Throw exception if fail
      */
-    private void sendMessage(SentMessage sentMessage, String path) throws Exception {
+    private void sendRemoteMessage(SentMessage sentMessage, String path) throws Exception {
         WrappedTCPObjectSocket wrappedTCPObjectSocket = null;
         TCPObjectSocket socket;
         URI uri = new URI(path);
@@ -245,6 +245,7 @@ public class ActorRef implements Serializable {
         for (int i = 0; i < 10; i++) {
             try {
                 wrappedTCPObjectSocket = context.system.actorSystemConnectionManager.getSocket(uri);
+                wrappedTCPObjectSocket.tcpObjectSocket.setActorRefId(this.hashCode());
                 socket = wrappedTCPObjectSocket.tcpObjectSocket;
                 socket.send(sentMessage);
                 if (null == sentMessage.sender())

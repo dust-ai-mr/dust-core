@@ -1,6 +1,7 @@
 package com.mentalresonance.dust.core.net;
 
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -16,17 +17,27 @@ import java.nio.channels.SocketChannel;
 @Slf4j
 public class TCPObjectSocket {
 
-    private static final int HEADER_SIZE = 4;
+    /** 4 bytes for payload size + 4 bytes for actorRefId */
+    private static final int HEADER_SIZE = 8;
     private static final int DEFAULT_CAPACITY = 64 * 1024 + HEADER_SIZE;
-    private static final int MAX_FRAME_SIZE = 8 * 1024 * 1024; // example 64 MiB hard cap
+    private static final int MAX_FRAME_SIZE = 8 * 1024 * 1024;
 
     private final Fory fory;
+
+    @Getter
+    @Setter
+    private int actorRefId = 0; // Now a setter-driven field
 
     private ByteBuffer buffer;
     private MemoryBuffer mem;
 
     @Getter
     private SocketChannel socketChannel;
+
+    // Internal state to track if we've already consumed the header from the wire
+    private boolean headerRead = false;
+    private int lastReadPayloadSize = 0;
+    private int lastReadTypeId = 0;
 
     public TCPObjectSocket() {
         this.fory = ForyService.fory();
@@ -43,6 +54,7 @@ public class TCPObjectSocket {
         buffer.clear();
         mem.readerIndex(0);
         mem.writerIndex(0);
+        headerRead = false;
     }
 
     public TCPObjectSocket wrap(SocketChannel ch) {
@@ -53,25 +65,47 @@ public class TCPObjectSocket {
                 this.socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                 this.socketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                 return this;
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 log.error("Failed to configure SocketChannel", e);
             }
         }
         return this;
     }
 
+    /**
+     * Reads only the 8-byte header from the channel.
+     * Useful for checking message types before committing to a full payload read.
+     */
+    public int actorRefId() throws IOException {
+        if (headerRead) {
+            return lastReadTypeId;
+        }
+
+        ensureCapacity(HEADER_SIZE);
+        buffer.clear();
+        buffer.limit(HEADER_SIZE);
+
+        readFully(buffer);
+        buffer.flip();
+
+        lastReadPayloadSize = buffer.getInt();
+        lastReadTypeId = buffer.getInt();
+        headerRead = true;
+
+        return lastReadTypeId;
+    }
+
     public void send(Object obj) throws Exception {
         if (obj == null) {
             ensureCapacity(HEADER_SIZE);
             buffer.clear();
-            buffer.putInt(0);
+            buffer.putInt(0);       // Payload Size
+            buffer.putInt(actorRefId);  // Type ID
             buffer.flip();
             writeFully(buffer);
             return;
         }
 
-        // First try with current buffer.
         while (true) {
             buffer.clear();
             buffer.position(HEADER_SIZE);
@@ -88,15 +122,17 @@ public class TCPObjectSocket {
                     throw new IOException("Serialized payload exceeds max frame size: " + payloadSize);
                 }
 
+                // Fill header using absolute puts to avoid messing with position
                 buffer.putInt(0, payloadSize);
+                buffer.putInt(4, actorRefId);
+
                 buffer.limit(end);
                 buffer.position(0);
 
                 writeFully(buffer);
-                log.trace("Sent {} bytes for {}", end, obj);
+                log.trace("Sent {} bytes (actorRefId: {}) for {}", end, actorRefId, obj);
                 return;
             } catch (IndexOutOfBoundsException | BufferOverflowException | IllegalArgumentException e) {
-                // Buffer too small; grow and retry.
                 int needed = Math.max(buffer.capacity() * 2, estimateNeededCapacity());
                 ensureCapacity(Math.min(needed, MAX_FRAME_SIZE + HEADER_SIZE));
             }
@@ -104,24 +140,32 @@ public class TCPObjectSocket {
     }
 
     public Object receive() throws Exception {
-        ensureCapacity(HEADER_SIZE);
+        int payloadSize;
+        int receivedTypeId;
 
-        buffer.clear();
-        buffer.limit(HEADER_SIZE);
-        readFully(buffer);
-        buffer.flip();
-
-        int payloadSize = buffer.getInt();
+        if (headerRead) {
+            payloadSize = lastReadPayloadSize;
+            receivedTypeId = lastReadTypeId;
+            headerRead = false; // Reset state for next message
+        } else {
+            ensureCapacity(HEADER_SIZE);
+            buffer.clear();
+            buffer.limit(HEADER_SIZE);
+            readFully(buffer);
+            buffer.flip();
+            payloadSize = buffer.getInt();
+            receivedTypeId = buffer.getInt();
+        }
 
         if (payloadSize == 0) {
             return null;
         }
+
         if (payloadSize < 0 || payloadSize > MAX_FRAME_SIZE) {
             throw new IOException("Protocol violation: invalid payload size " + payloadSize);
         }
 
         ensureCapacity(payloadSize);
-
         buffer.clear();
         buffer.limit(payloadSize);
         readFully(buffer);
@@ -131,40 +175,34 @@ public class TCPObjectSocket {
         mem.writerIndex(payloadSize);
 
         try {
-            Object result = fory.deserialize(mem);
-            return result;
-        }
-        catch (Exception e) {
-            log.error("Failed to deserialize {} size {}", e, payloadSize);
+            return fory.deserialize(mem);
+        } catch (Exception e) {
+            log.error("Failed to deserialize type {} size {}", receivedTypeId, payloadSize);
             throw e;
         }
     }
 
-    private void ensureCapacity(int neededPayloadBytes) {
-        int needed = neededPayloadBytes;
-        if (needed > MAX_FRAME_SIZE + HEADER_SIZE) {
-            throw new IllegalArgumentException("Requested capacity exceeds hard cap: " + needed);
+    private void ensureCapacity(int neededBytes) {
+        if (neededBytes > MAX_FRAME_SIZE + HEADER_SIZE) {
+            throw new IllegalArgumentException("Requested capacity exceeds hard cap: " + neededBytes);
         }
-        if (buffer.capacity() >= needed) {
+        if (buffer.capacity() >= neededBytes) {
             return;
         }
 
-        int newCapacity = nextPowerOfTwo(needed);
+        int newCapacity = nextPowerOfTwo(neededBytes);
         ByteBuffer newBuffer = ByteBuffer.allocateDirect(newCapacity);
         this.buffer = newBuffer;
         this.mem = MemoryUtils.wrap(newBuffer);
     }
 
     private int estimateNeededCapacity() {
-        // crude retry growth target when serialization overflowed
         return Math.max(buffer.capacity() * 2, HEADER_SIZE + 1024);
     }
 
     private static int nextPowerOfTwo(int x) {
         int n = 1;
-        while (n < x) {
-            n <<= 1;
-        }
+        while (n < x) n <<= 1;
         return n;
     }
 
@@ -203,9 +241,6 @@ public class TCPObjectSocket {
             buffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY);
             mem = MemoryUtils.wrap(buffer);
         }
-
-        buffer.clear();
-        mem.readerIndex(0);
-        mem.writerIndex(0);
+        init();
     }
 }

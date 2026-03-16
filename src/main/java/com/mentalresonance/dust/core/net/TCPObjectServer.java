@@ -22,6 +22,7 @@ package com.mentalresonance.dust.core.net;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
+import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
 import lombok.extern.slf4j.Slf4j;
@@ -53,13 +54,13 @@ public class TCPObjectServer {
     final int CONNECTIONS = 32;
     LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS);
 
-    Cache<Integer, QandThread> workerBees = Caffeine
+    Cache<Integer, WorkerBee> workerBees = Caffeine
         .newBuilder()
         .maximumSize(CONNECTIONS)
-        .removalListener((Integer key, QandThread qat, RemovalCause cause) -> {
-            if (qat != null) {
+        .removalListener((Integer key, WorkerBee wb, RemovalCause cause) -> {
+            if (wb != null) {
                 log.warn("WorkerBee {} removed from cache on port {} {}", key, actorSystem.getPort(), cause);
-                qat.thread.interrupt();
+                wb.thread().interrupt();
             }
         })
         .build();
@@ -101,7 +102,28 @@ public class TCPObjectServer {
                     {
                         SocketChannel client = server.accept();   // blocking accept
                         log.trace("{} Accepted connection from {}", this, client.getRemoteAddress());
-                        Thread.startVirtualThread(() -> connectionServer(actorSystem, client));
+                        TCPObjectSocket socket = workerSockets.poll(5, TimeUnit.SECONDS);
+                        if (socket == null) {
+                            log.warn("Server saturated: No available worker sockets");
+                            client.close();
+                            return;
+                        }
+
+                        client.configureBlocking(true);
+                        client.setOption(StandardSocketOptions.TCP_NODELAY, true);
+                        client.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+                        socket.wrap(client);
+
+                        int senderId = socket.getActorRefId();
+                        if (senderId != ActorRef.NullActorRefID) {
+                            WorkerBee wb = workerBees.get(senderId, k -> {
+                                WorkerBee workerBee = new WorkerBee(k);
+                                Thread.startVirtualThread(workerBee);
+                                return workerBee;
+                            });
+                            wb.processTCBObject(socket);
+                            LockSupport.unpark(wb.thread());
+                        }
                     }
                 }
                 catch (ClosedByInterruptException ignored) {  // How we stop
@@ -132,7 +154,6 @@ public class TCPObjectServer {
      */
     protected void connectionServer(ActorSystem actorSystem, SocketChannel client) {
         TCPObjectSocket socket = null;
-        QandThread qandThread;
 
         try {
             // Poll instead of take to avoid indefinite blocking if the pool is exhausted
@@ -154,14 +175,15 @@ public class TCPObjectServer {
 
                 if (sentMsg == null) break; // Client sent termination signal (length 0)
 
-                if (sentMsg.sender() != null) {
-                    qandThread = workerBees.get(sentMsg.sender().hashCode(), k -> {
+                ActorRef sender = sentMsg.sender();
+                if (sender != null) {
+                    WorkerBee wb = workerBees.get(sender.hashCode(), k -> {
                         WorkerBee workerBee = new WorkerBee(k);
                         Thread workerBeeThread = Thread.startVirtualThread(workerBee);
-                        return new QandThread(workerBee.queue, workerBeeThread);
+                        return workerBee;
                     });
-                    qandThread.queue.offer(sentMsg);
-                    LockSupport.unpark(qandThread.thread);
+                    wb.queue.offer(sentMsg);
+                    LockSupport.unpark(wb.thread());
                 }
                 else {  // Have to serialize the old way ... :(
                     actorSystem.connectionAccepted(sentMsg);
@@ -214,21 +236,27 @@ public class TCPObjectServer {
         }
 
         public void run() {
-            SentMessage sentMessage;
+
             while(true)
             {
                 if (Thread.currentThread().isInterrupted()) {
                     break;
                 }
-                if (null != (sentMessage = queue.poll())) {
-                    actorSystem.connectionAccepted(sentMessage);
-                } else
+                if (0 == queue.drain((sentMessage) -> { actorSystem.connectionAccepted(sentMessage); })) {
                     LockSupport.park();
-
+                }
             }
             workerBees.invalidate(id);
         }
+
+        public void processTCBObject(TCPObjectSocket socket) throws Exception {
+            SentMessage sentMessage =  (SentMessage)socket.receive();
+            queue.offer(sentMessage);
+        }
+
+        Thread thread() {
+            return Thread.currentThread();
+        };
     }
 
-    record QandThread(MpscLinkedQueue<SentMessage> queue, Thread thread) {}
 }

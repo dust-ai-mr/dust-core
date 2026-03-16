@@ -24,6 +24,7 @@ import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationExcepti
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.jctools.queues.MpscLinkedQueue;
 import org.jctools.queues.MpscUnboundedArrayQueue;
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
@@ -619,7 +620,7 @@ public class Actor implements Runnable {
             if (Thread.interrupted()) { // This resets the interrupt
                 throw new InterruptedException("Actor mailbox interrupted during take");
             }
-            MpscUnboundedArrayQueue<SentMessage> queue = self.mailBox.queue;
+            MpscLinkedQueue<SentMessage> queue = self.mailBox.queue;
             if (null == queue) {
                 log.error("{} Q is null", self.path);
             }
@@ -1098,7 +1099,8 @@ public class Actor implements Runnable {
         @Setter
         Boolean dead = false;
         @Getter
-        MpscUnboundedArrayQueue<SentMessage> queue = new MpscUnboundedArrayQueue<>(8);
+        //MpscUnboundedArrayQueue<SentMessage> queue = new MpscUnboundedArrayQueue<>(128);
+        MpscLinkedQueue<SentMessage> queue = new MpscLinkedQueue<>();
 
         /**
          * Create mailbox
