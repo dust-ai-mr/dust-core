@@ -161,7 +161,7 @@ public class ActorSystem {
         this.name = name;
         this.port = port;
         systemLength = name.length() + 1;
-        actorSystemConnectionManager = new ActorSystemConnectionManager(this);
+        actorSystemConnectionManager = new ActorSystemConnectionManager();
         init(logDeadLetters);
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
     }
@@ -186,7 +186,7 @@ public class ActorSystem {
         this.name = name;
         this.port = port;
         systemLength = name.length() + 1;
-        actorSystemConnectionManager = new ActorSystemConnectionManager(this);
+        actorSystemConnectionManager = new ActorSystemConnectionManager();
         init(logDeadLetters);
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
     }
@@ -275,7 +275,6 @@ public class ActorSystem {
             try {
                 server.stop();
                 haveStopped.get(5, TimeUnit.SECONDS);
-                actorSystemConnectionManager.shutdown();
                 log.info("Server shut down");
             }
             catch (Exception e) {
@@ -325,7 +324,7 @@ public class ActorSystem {
 
         server = new TCPObjectServer(
             port,
-            actorSystemConnectionManager,
+            this,
             haveStopped
         );
 
@@ -342,7 +341,7 @@ public class ActorSystem {
                  * path is /system/...
                  */
                 String path = new URI(msg.remotePath()).getPath().substring(systemLength);
-                ActorRef sender = (null != msg.sender()) ? msg.sender().remotify() : null;
+                ActorRef sender = (null != msg.sender()) ? msg.sender() : null;
                 ActorRef target = context.actorSelection(path);
 
                 if (null == target) {
@@ -360,6 +359,7 @@ public class ActorSystem {
                 if (message instanceof ActorRef) {
                     ((ActorRef)message).context = context;
                 }
+                //log.info("Sending {} from {} to {}", message, sender, target);
                 target.tell(message, sender);
             }
             catch (Exception e) {

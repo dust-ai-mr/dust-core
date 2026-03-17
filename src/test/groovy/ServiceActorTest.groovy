@@ -107,8 +107,8 @@ class ServiceActorTest extends Specification {
 
 		@Override
 		void preStart() {
-			// Create the service manager allowing at most 10 service actors at any given time
-			squareRef = actorOf(ServiceManagerActor.props(SquareServiceActor.props(), 10), 'square')
+			// Create the service manager allowing at most 100 service actors at any given time
+			squareRef = actorOf(ServiceManagerActor.props(SquareServiceActor.props(), 100), 'square')
 			tellSelf(new StartMsg())
 		}
 
@@ -119,6 +119,9 @@ class ServiceActorTest extends Specification {
 					case StartMsg:
 						if (sent != limit) {
 							squareRef.tell(new SquareMsg(number: ++sent), self)
+							// Don't flood with requests .. give results time to trickle back into mailbox else
+							// it will get slooow ..
+							Thread.sleep(0, 1000)
 							tellSelf(message)
 						}
 						break

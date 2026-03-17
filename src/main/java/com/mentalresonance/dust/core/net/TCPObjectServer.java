@@ -25,6 +25,8 @@ import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jctools.queues.MpscLinkedQueue;
 
@@ -47,20 +49,19 @@ import java.util.concurrent.locks.LockSupport;
 public class TCPObjectServer {
     final int port;
     volatile boolean terminated;
-    final ActorSystemConnectionManager actorSystemConnectionManager;
     final CompletableFuture<Boolean> haveStopped;
     Thread serverThread;
     private ActorSystem actorSystem;
     final int CONNECTIONS = 32;
     LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS);
 
-    Cache<Integer, WorkerBee> workerBees = Caffeine
+    Cache<Long, WorkerBee> workerBees = Caffeine
         .newBuilder()
         .maximumSize(CONNECTIONS)
-        .removalListener((Integer key, WorkerBee wb, RemovalCause cause) -> {
+        .removalListener((Long key, WorkerBee wb, RemovalCause cause) -> {
             if (wb != null) {
                 log.warn("WorkerBee {} removed from cache on port {} {}", key, actorSystem.getPort(), cause);
-                wb.thread().interrupt();
+                wb.getThread().interrupt();
             }
         })
         .build();
@@ -68,17 +69,16 @@ public class TCPObjectServer {
     /**
      * A server
      * @param port on port number
-     * @param actorSystemConnectionManager manage incoming connections
+     * @param actorSystem
      * @param haveStopped completed when stopped
      */
     public TCPObjectServer(
             int port,
-            ActorSystemConnectionManager actorSystemConnectionManager,
+            ActorSystem actorSystem,
             CompletableFuture<Boolean> haveStopped) {
         this.port = port;
-        this.actorSystemConnectionManager = actorSystemConnectionManager;
         this.haveStopped = haveStopped;
-        this.actorSystem = actorSystemConnectionManager.getActorSystem();
+        this.actorSystem = actorSystem;
 
         for (int i = 0; i < CONNECTIONS; ++i) {
             workerSockets.add(new TCPObjectSocket());
@@ -86,7 +86,9 @@ public class TCPObjectServer {
     }
 
     /**
-     * Start server
+     * Start server - accept an incoming connection and wrap its channel with a TCPObjectSocket
+     * Get the ID of that ObjectSocket - which identifies the unique pair of ActorRefs at either end
+     * of the conversation. Dispatch it of to the appropriate worker bee.
      * @throws IOException on errors
      */
     public void start(ActorSystem actorSystem) throws IOException {
@@ -114,16 +116,22 @@ public class TCPObjectServer {
                         client.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                         socket.wrap(client);
 
-                        int senderId = socket.getActorRefId();
-                        if (senderId != ActorRef.NullActorRefID) {
-                            WorkerBee wb = workerBees.get(senderId, k -> {
-                                WorkerBee workerBee = new WorkerBee(k);
-                                Thread.startVirtualThread(workerBee);
-                                return workerBee;
-                            });
-                            wb.processTCBObject(socket);
-                            LockSupport.unpark(wb.thread());
-                        }
+                        int payloadSize = socket.readHeader();
+
+                        long id = socket.getCombinedIds();
+
+                        WorkerBee wb = workerBees.get(id, k -> {
+                            // log.info("---------- new bee for {} src:{} target:{}", id, socket.getSrcId(), socket.getTargetId());
+                            WorkerBee workerBee;
+                            try {
+                                workerBee = new WorkerBee(k, socket, payloadSize);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                            Thread wbThread = Thread.startVirtualThread(workerBee);
+                            workerBee.setThread(wbThread);
+                            return workerBee;
+                        });
                     }
                 }
                 catch (ClosedByInterruptException ignored) {  // How we stop
@@ -147,66 +155,6 @@ public class TCPObjectServer {
         serverThread.start();
     }
 
-    /**
-     * Sit on this connection and process messages until we get a null message.
-     * @param actorSystem
-     * @param client
-     */
-    protected void connectionServer(ActorSystem actorSystem, SocketChannel client) {
-        TCPObjectSocket socket = null;
-
-        try {
-            // Poll instead of take to avoid indefinite blocking if the pool is exhausted
-            socket = workerSockets.poll(5, TimeUnit.SECONDS);
-            if (socket == null) {
-                log.warn("Server saturated: No available worker sockets");
-                client.close();
-                return;
-            }
-
-            client.configureBlocking(true);
-            client.setOption(StandardSocketOptions.TCP_NODELAY, true);
-            client.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-            socket.wrap(client);
-
-            while (!terminated)
-            {
-                SentMessage sentMsg = (SentMessage)socket.receive();
-
-                if (sentMsg == null) break; // Client sent termination signal (length 0)
-
-                ActorRef sender = sentMsg.sender();
-                if (sender != null) {
-                    WorkerBee wb = workerBees.get(sender.hashCode(), k -> {
-                        WorkerBee workerBee = new WorkerBee(k);
-                        Thread workerBeeThread = Thread.startVirtualThread(workerBee);
-                        return workerBee;
-                    });
-                    wb.queue.offer(sentMsg);
-                    LockSupport.unpark(wb.thread());
-                }
-                else {  // Have to serialize the old way ... :(
-                    actorSystem.connectionAccepted(sentMsg);
-                    // Ack
-                    socket.send(null);
-                }
-            }
-        }
-        catch (InterruptedException e) {
-            log.error("Interrupted while handling client {}", client);
-            Thread.currentThread().interrupt();
-        }
-        catch (Exception e) {
-            log.error("Error handling client {}: {}", client, e.getMessage());
-        }
-        finally {
-            log.trace("Closing connection to {}", client);
-            if (socket != null) {
-                returnSocket(socket);
-            }
-        }
-    }
-
     public void returnSocket(TCPObjectSocket socket) {
         socket.close();
         socket.restoreInitialCapacity();
@@ -227,36 +175,42 @@ public class TCPObjectServer {
         }
     }
 
-    private class WorkerBee implements Runnable {
-        public final MpscLinkedQueue<SentMessage> queue = new MpscLinkedQueue<>();
-        int id;
+    private record Digest(int payloadSize, TCPObjectSocket socket) {}
 
-        WorkerBee(int id) {
+    private class WorkerBee implements Runnable {
+
+        @Getter @Setter Thread thread;
+
+        TCPObjectSocket socket;
+        long id;
+
+        WorkerBee(long id, TCPObjectSocket socket, int payloadSize) throws Exception {
             this.id = id;
+            this.socket = socket;
+            actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
+            if (socket.isNullSender())
+                socket.send(null);
+
         }
 
-        public void run() {
+        public void run()
+        {
+            int payloadSize;
 
             while(true)
             {
-                if (Thread.currentThread().isInterrupted()) {
+                try {
+                    payloadSize = socket.readHeader();
+                    actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
+                    if (socket.isNullSender())
+                        socket.send(null);
+                } catch (Exception e) {
+                    log.error("WorkerBee {}: {}", id, e.getMessage());
                     break;
-                }
-                if (0 == queue.drain((sentMessage) -> { actorSystem.connectionAccepted(sentMessage); })) {
-                    LockSupport.park();
                 }
             }
             workerBees.invalidate(id);
         }
-
-        public void processTCBObject(TCPObjectSocket socket) throws Exception {
-            SentMessage sentMessage =  (SentMessage)socket.receive();
-            queue.offer(sentMessage);
-        }
-
-        Thread thread() {
-            return Thread.currentThread();
-        };
     }
 
 }

@@ -175,7 +175,7 @@ public class ActorRef implements Serializable {
     public boolean tell(Serializable message, ActorRef sender) {
         boolean success = true;
 
-        // log.info("Delivering {} to {} mailbox from {}", message, this, sender);
+        // log.info("{} delivery of {} to {} mailbox from {}", (mailBox != null) ? "Local":"Remote", message, this, sender);
 
         try {
             SentMessage sentMessage;
@@ -192,6 +192,7 @@ public class ActorRef implements Serializable {
             if (mailBox != null) { // Local
                 sentMessage = new SentMessage(message, sender);
                 if (! mailBox.dead) {
+                    // log.info("Sending local {} to {} from {}", sentMessage.message(), this, sentMessage.sender());
                     mailBox.queue.offer(sentMessage);
                     LockSupport.unpark(mailboxThread);
                 }
@@ -209,7 +210,7 @@ public class ActorRef implements Serializable {
                 if (! path.contains(":"))
                     path = host + path;
                 try {
-                    sendRemoteMessage(new SentMessage(message, sender, path), path);
+                    sendRemoteMessage(new SentMessage(message, sender, path));
                 }
                 catch (InterruptedException ie) {
                     log.error("Could not get socket to {}: Interrupted", path);
@@ -236,20 +237,21 @@ public class ActorRef implements Serializable {
     /*
         Try to send message. Throw exception if fail
      */
-    private void sendRemoteMessage(SentMessage sentMessage, String path) throws Exception {
-        WrappedTCPObjectSocket wrappedTCPObjectSocket = null;
+    private void sendRemoteMessage(SentMessage sentMessage) throws Exception {
         TCPObjectSocket socket;
         URI uri = new URI(path);
         Exception lastException = null;
+        int senderId = null != sentMessage.sender() ? sentMessage.sender().hashCode() : ActorRef.NullActorRefID;
+        int targetId = sentMessage.remotePath().hashCode();
+
+        //log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
 
         for (int i = 0; i < 10; i++) {
             try {
-                wrappedTCPObjectSocket = context.system.actorSystemConnectionManager.getSocket(uri);
-                wrappedTCPObjectSocket.tcpObjectSocket.setActorRefId(this.hashCode());
-                socket = wrappedTCPObjectSocket.tcpObjectSocket;
+                socket = context.system.actorSystemConnectionManager.getSocket(sentMessage.sender(), senderId, targetId, uri);
                 socket.send(sentMessage);
                 if (null == sentMessage.sender())
-                    socket.receive();
+                    socket.readHeader();
                 return;
             }
             catch (InterruptedException ie) {
@@ -260,12 +262,7 @@ public class ActorRef implements Serializable {
             catch (Exception e) {
                 log.error("Could not send message {} to {}: {}", sentMessage.message(), path, e);
                 lastException = e;
-                context.system.actorSystemConnectionManager.flushPool(uri);
                 Thread.sleep(5000L);
-            }
-            finally {
-                if (null != wrappedTCPObjectSocket)
-                    context.system.actorSystemConnectionManager.returnSocket(wrappedTCPObjectSocket);
             }
         }
         throw lastException;
@@ -306,16 +303,6 @@ public class ActorRef implements Serializable {
                 log.error("Resolution error: {}", e.getMessage());
             }
         }
-    }
-
-    /**
-     * Make sure this ActorRef contains the host in its path
-     * @return itself with possibly modified path
-     */
-    ActorRef remotify() {
-        if (! path.contains(":"))
-            path = host + path;
-        return this;
     }
 
     /**
@@ -390,9 +377,13 @@ public class ActorRef implements Serializable {
     @Override
     public int hashCode() {
         if (mailBox != null)
-            return super.hashCode();
+            return mailBox.hashCode();
         else {
-            return path.hashCode();
+            // Hashcode is always hash of full path
+            if (path.contains(":"))
+                return path.hashCode();
+            else
+                return (host + path).hashCode();
         }
     }
 
@@ -404,7 +395,7 @@ public class ActorRef implements Serializable {
             if (!(o instanceof ActorRef))
                 return false;
             else
-                return path.hashCode() == o.hashCode();
+                return path.equals(((ActorRef)o).path);
         }
     }
 

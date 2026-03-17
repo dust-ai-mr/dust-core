@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 
 /**
- * Container for location information for an Actor itentified by a path
+ * Container for location information for an Actor identified by a path
  */
 @Slf4j
 public class ActorSelection implements Serializable {

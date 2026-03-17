@@ -24,16 +24,16 @@ import spock.lang.Specification
 class RemotePingPong2 extends Specification {
 
 	ActorSystem me = new ActorSystem("me", 9097)  // I'm watching remote Actors so I need to be remote
-	static ActorSystem system1 = new ActorSystem("RemotePingPong2", 9098)
+	static ActorSystem system1 = new ActorSystem("RemotePingPong1", 9098)
 	static ActorSystem system2 = new ActorSystem("RemotePingPong2", 9099)
 
 	@Slf4j
 	static class Runner extends Actor {
 
-		ActorRef ping3, pong3, ping4, pong4
+		ActorRef ping1, pong1, ping2, pong2
 
 		int running = 4
-		int PINGS = 2000_000
+		int PINGS = 1000000
 		long started
 
 		static Props props() {
@@ -41,18 +41,18 @@ class RemotePingPong2 extends Specification {
 		}
 
 		void preStart() {
-			system1.context.actorOf(PingActor.props(PINGS), 'ping3')
-			system2.context.actorOf(PingActor.props(PINGS), 'pong3')
-			system1.context.actorOf(PingActor.props(PINGS), 'ping4')
-			system2.context.actorOf(PingActor.props(PINGS), 'pong4')
+			system1.context.actorOf(PingActor.props(PINGS), 'ping')
+			system1.context.actorOf(PingActor.props(PINGS), 'pong')
+			system2.context.actorOf(PingActor.props(PINGS), 'ping')
+			system2.context.actorOf(PingActor.props(PINGS), 'pong')
 
-			ping3 = watch(system1.context.actorSelection("dust://localhost:9098/RemotePingPong2/user/ping3"))
-			pong3 = watch(system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong3"))
-			ping4 = watch(system1.context.actorSelection("dust://localhost:9098/RemotePingPong2/user/ping4"))
-			pong4 = watch(system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong4"))
+			ping1 = watch(system1.context.actorSelection("dust://localhost:9098/RemotePingPong1/user/ping"))
+			pong1 = watch(system2.context.actorSelection("dust://localhost:9098/RemotePingPong1/user/pong"))
+			ping2 = watch(system1.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/ping"))
+			pong2 = watch(system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong"))
 
-			ping3.tell(new PingMsg(), pong3)
-			ping4.tell(new PingMsg(), pong4)
+			ping1.tell(new PingMsg(), pong1)
+			ping2.tell(new PingMsg(), pong2)
 			started = System.currentTimeMillis()
 		}
 

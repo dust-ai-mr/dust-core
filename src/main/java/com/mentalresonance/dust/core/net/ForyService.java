@@ -67,6 +67,7 @@ public class ForyService {
         fory.register(PingMsg.class);
         fory.register(PoisonPill.class);
         fory.register(LinkedHashMap.class);
+        fory.register(Terminated.class);
 
 
         for(Class<?> clazz : classes) {

@@ -55,8 +55,9 @@ class RemoteShootOut extends Specification {
 			(message) -> {
 				switch(message) {
 					case Terminated:
-						if (++deaths == 3)
+						if (++deaths == 3) {
 							stopSelf()
+						}
 						break
 
 					default: log.error "????"
@@ -88,7 +89,8 @@ class RemoteShootOut extends Specification {
 						ActorRef msg = (ActorRef)message
 						msg.context = context
 						outgoing[message] = shots
-						tellSelf(new StartMsg())
+						if (outgoing.size() == 2)
+							tellSelf(new StartMsg())
 						break
 
 					case Shot:
@@ -97,8 +99,9 @@ class RemoteShootOut extends Specification {
 							incoming[sender] = 0
 						if (incoming[sender] == shot.count - 1) {  // Must be in sequence
 							incoming[sender] = shot.count
+							//log.info("{} Shot by {}: current={}", self.path, sender, incoming[sender])
 						} else {
-							log.error("Out of sequence")
+							log.error("{} Out of sequence from {}: current={}, next shot is {}", self.path, sender, incoming[sender], shot.count)
 							success = false
 							stopSelf()
 						}
@@ -109,10 +112,16 @@ class RemoteShootOut extends Specification {
 							if (it.value > 0) {
 								it.key.tell(new Shot(1 + shots - it.value), self)
 								it.value = it.value - 1
+								//log.info "${self.path} shot ${it.key}"
 							}
 						}
-						if ( (!outgoing.values().find {it > 0 }) && (!incoming.values().find { it != shots })) {
-							log.info "Stopping ${self.path}"
+						if (
+							incoming.size() == 2 &&
+							outgoing.size() == 2 &&
+							(!outgoing.values().find {it > 0 }) &&
+							(!incoming.values().find { it != shots })
+						) {
+							log.info "Stopping ${self.path}  ${outgoing.values().toList()}  ${incoming.values().toList()}"
 							stopSelf()
 						} else {
 							tellSelf(message)
@@ -136,7 +145,7 @@ class RemoteShootOut extends Specification {
 
 	def "Shootout"() {
 		when:
-			def clip = 1000000
+			def clip = 500000
 
 			long time = System.currentTimeMillis()
 

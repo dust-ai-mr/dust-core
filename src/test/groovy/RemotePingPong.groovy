@@ -34,7 +34,7 @@ class RemotePingPong extends Specification {
 		ActorRef ping, pong
 
 		int running = 2
-		int PINGS = 100
+		int PINGS = 1000000
 		long started
 
 		static Props props() {
