@@ -22,14 +22,11 @@ package com.mentalresonance.dust.core.net;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
-import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.jctools.queues.MpscLinkedQueue;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -39,7 +36,6 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
 
 /**
  * Runs a server to receive remote messages. Spawns a new virtual thread to handle a new connection but
@@ -48,19 +44,18 @@ import java.util.concurrent.locks.LockSupport;
 @Slf4j
 public class TCPObjectServer {
     final int port;
-    volatile boolean terminated;
     final CompletableFuture<Boolean> haveStopped;
     Thread serverThread;
-    private ActorSystem actorSystem;
-    final int CONNECTIONS = 32;
-    LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS);
+    private final ActorSystem actorSystem;
+    final int CONNECTIONS = 64;
+
+    LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS+1);
 
     Cache<Long, WorkerBee> workerBees = Caffeine
         .newBuilder()
         .maximumSize(CONNECTIONS)
-        .removalListener((Long key, WorkerBee wb, RemovalCause cause) -> {
+        .evictionListener((Long key, WorkerBee wb, RemovalCause cause) -> {
             if (wb != null) {
-                log.warn("WorkerBee {} removed from cache on port {} {}", key, actorSystem.getPort(), cause);
                 wb.getThread().interrupt();
             }
         })
@@ -80,7 +75,7 @@ public class TCPObjectServer {
         this.haveStopped = haveStopped;
         this.actorSystem = actorSystem;
 
-        for (int i = 0; i < CONNECTIONS; ++i) {
+        for (int i = 0; i < CONNECTIONS+1; ++i) {
             workerSockets.add(new TCPObjectSocket());
         }
     }
@@ -92,14 +87,13 @@ public class TCPObjectServer {
      * @throws IOException on errors
      */
     public void start(ActorSystem actorSystem) throws IOException {
-        serverThread = new Thread("server "+port)
-        {
-            public void run() {
+        serverThread = Thread.ofVirtual().start(
+            () ->  {
                 ServerSocketChannel server = null;
                 try {
                     server = ServerSocketChannel.open();
                     server.bind(new InetSocketAddress(port));
-                    log.info ("Remoting Server started on socket {}", server.socket());
+                    log.trace ("Remoting Server started on socket {}", server.socket());
                     while (true)
                     {
                         SocketChannel client = server.accept();   // blocking accept
@@ -147,12 +141,10 @@ public class TCPObjectServer {
                 catch (Exception e) {
                     e.printStackTrace();
                 }
-                log.info("Remoting Server stopped on socket: {}", server.socket());
+                log.trace("Remoting Server stopped on socket: {}", server.socket());
                 haveStopped.complete(true);
             }
-        };
-
-        serverThread.start();
+        );
     }
 
     public void returnSocket(TCPObjectSocket socket) {
@@ -177,6 +169,10 @@ public class TCPObjectServer {
 
     private record Digest(int payloadSize, TCPObjectSocket socket) {}
 
+    /*
+     * Sit on a connection reading messages and handing them off. The connection is *the* channel for
+     * messages between a fixed pair of Actors.
+     */
     private class WorkerBee implements Runnable {
 
         @Getter @Setter Thread thread;
@@ -201,15 +197,29 @@ public class TCPObjectServer {
             {
                 try {
                     payloadSize = socket.readHeader();
-                    actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
-                    if (socket.isNullSender())
-                        socket.send(null);
-                } catch (Exception e) {
+                    if (0 == payloadSize) { // 'null' sent which means the other end is going away ...
+                        if (socket.isNullSender()) {
+                            socket.send(null);
+                            break;
+                        }
+                    }
+                    else {
+                        actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
+                        if (socket.isNullSender())
+                            socket.send(null);
+                    }
+                }
+                // Naturally stopping - because of local eviction or client close socket
+                catch (InterruptedException | IOException ie) {
+                    break;
+                }
+                catch (Exception e) {
                     log.error("WorkerBee {}: {}", id, e.getMessage());
                     break;
                 }
             }
-            workerBees.invalidate(id);
+            returnSocket(socket); // This will close the underlying socket
+            workerBees.invalidate(id); // Will not trigger eviction listener
         }
     }
 

@@ -23,25 +23,22 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorRef;
-import com.mentalresonance.dust.core.actors.ActorSystem;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Main connections between pairs of ActorRefs -- each has an int ID (has of path) and we
+ * Main connections between pairs of ActorRefs -- each has an int ID (hash of path) and we
  * combine them intop a Long
  */
 @Slf4j
 public class ActorSystemConnectionManager {
 
-    int CONNECTIONS = 128;
+    int CONNECTIONS = 64;
 
     LinkedBlockingQueue<TCPObjectSocket> freeSockets = new LinkedBlockingQueue<>();
 
@@ -50,8 +47,10 @@ public class ActorSystemConnectionManager {
         .maximumSize(CONNECTIONS)
         .removalListener((Long key, TCPObjectSocket socket, RemovalCause cause) -> {
             try {
-                socket.send(null);
-                socket.close();
+                if (! socket.isClosed()) {
+                    socket.send(null);
+                    socket.close();
+                }
                 freeSockets.add(socket);
             }
             catch (Exception e) {
@@ -78,17 +77,57 @@ public class ActorSystemConnectionManager {
             try {
                 TCPObjectSocket sock =  connections.get(key, (id) -> {
                     TCPObjectSocket socket = freeSockets.poll();
-                    try {
-                        // log.info("New connection {} to {} id={} srcId={} src={}", socket, uri, id, srcId, sender);
-                        socket.wrap(SocketChannel.open(new InetSocketAddress(uri.getHost(), uri.getPort())));
-                        socket.setSrcId(srcId);
-                        socket.setTargetId(targetId);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                    if (null != socket) {
+                        try {
+                            // log.info("New connection {} to {} id={} srcId={} src={}", socket, uri, id, srcId, sender);
+                            socket.wrap(SocketChannel.open(new InetSocketAddress(uri.getHost(), uri.getPort())));
+                            socket.setSrcId(srcId);
+                            socket.setTargetId(targetId);
+                        }
+                        catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
                     }
                     return socket;
                 });
-                //log.info("Got socket {} for {}->{} [{}] {}", sock, srcId, targetId, key, uri);
+                if (null == sock) {
+                    /*
+                       No free sockets so walk connections to see if any related socket warps a closed channel
+                       Return them and try again
+                     */
+                    AtomicBoolean done = new AtomicBoolean(false);
+                    connections.asMap().forEach((k, v) -> {
+                        if (v.isClosed()) {
+                            connections.invalidate(k);
+                            log.info("Found closed socket for {} .. returning", k);
+                            done.set(true);
+                        }
+                    });
+                    if (!done.get()) {
+                        connections.policy().eviction().ifPresent(policy -> {
+                            // The first element in the iterator is the "coldest" (LRU)
+                            // or next-in-line for eviction
+                            var oldestEntry = policy.coldest(1).entrySet().iterator().next();
+
+                            if (oldestEntry != null) {
+                                connections.invalidate(oldestEntry.getKey());
+                            }
+                        });
+                    }
+                    Thread.sleep(0, 500); // Allow a little time for any cache maniplation to take root
+                                          // In the very rare case this sin't enough and we time out here
+                                          // the tell() will retry (handling the IOException)
+                    continue;
+
+                }
+                else if (sock.isClosed()) {
+                  /*
+                    Could be closed because we are reusing a cached socket that was closed by the remote server because its
+                    WorkerBee got evicted. So clean up and retry
+                  */
+                    connections.invalidate(key);
+                    continue;
+                }
                 return sock;
             }
             catch (RuntimeException e) {
@@ -96,7 +135,7 @@ public class ActorSystemConnectionManager {
                 Thread.sleep(3000L);
             }
         }
-        log.error("Cannot get connection to remote actor system: {}", uri);
+        log.warn("Cannot get connection to remote actor: {} {}", uri, key);
         throw new IOException();
     }
 

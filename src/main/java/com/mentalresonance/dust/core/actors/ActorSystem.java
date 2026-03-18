@@ -53,8 +53,6 @@ public class ActorSystem {
     final
     String host;
 
-    final int systemLength; // For trimming system off path
-
     @Getter
     ActorContext context;
 
@@ -160,7 +158,6 @@ public class ActorSystem {
         this.host = "localhost";
         this.name = name;
         this.port = port;
-        systemLength = name.length() + 1;
         actorSystemConnectionManager = new ActorSystemConnectionManager();
         init(logDeadLetters);
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
@@ -185,7 +182,6 @@ public class ActorSystem {
         this.host = host;
         this.name = name;
         this.port = port;
-        systemLength = name.length() + 1;
         actorSystemConnectionManager = new ActorSystemConnectionManager();
         init(logDeadLetters);
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
@@ -333,6 +329,17 @@ public class ActorSystem {
         return haveStopped;
     }
 
+    private static String substringAtNth(String str, char target, int n) {
+        if (str == null || n <= 0) return str;
+
+        int index = -1;
+        for (int i = 0; i < n; i++) {
+            index = str.indexOf(target, index + 1);
+            if (index == -1) return ""; // Or throw exception if n matches are required
+        }
+
+        return str.substring(index);
+    }
     public void connectionAccepted(SentMessage msg) {
         Object o = null;
         try {
@@ -340,7 +347,7 @@ public class ActorSystem {
                 /*
                  * path is /system/...
                  */
-                String path = new URI(msg.remotePath()).getPath().substring(systemLength);
+                String path = substringAtNth(msg.remotePath(), '/', 4);
                 ActorRef sender = (null != msg.sender()) ? msg.sender() : null;
                 ActorRef target = context.actorSelection(path);
 

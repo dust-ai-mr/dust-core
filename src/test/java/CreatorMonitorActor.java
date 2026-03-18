@@ -1,15 +1,13 @@
 import com.mentalresonance.dust.core.actors.*;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
 
-import java.io.Serializable;
-
 /**
  * PArt of performance Tests
  */
 public class CreatorMonitorActor extends Actor {
 
     Integer number, size;
-    Long t1;
+    static Long tStart, tCreated, tStopped;
     Cancellable doit;
 
     public static Props props(Integer number, Integer size) {
@@ -35,26 +33,15 @@ public class CreatorMonitorActor extends Actor {
 
     @Override
     public void preStart() throws ActorInstantiationException {
-        t1 = System.currentTimeMillis();
+        tStart = System.currentTimeMillis();
         for (int i = 0; i < number; ++i) {
             actorOf(CreatorActor.props(size), "group-" + i);
         }
-        try {
-            Thread.sleep(5000);
-        }
-        catch (InterruptedException e) {}
-
+        tCreated = System.currentTimeMillis();
         tellSelf(new PoisonPill());
-
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {}
-
-        System.out.println("Stopping");
     }
 
-    @Override
     public void postStop() {
-        System.out.println("Stopped");
+        tStopped = System.currentTimeMillis();
     }
 }

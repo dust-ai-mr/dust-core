@@ -64,7 +64,7 @@ class ChildResolution extends Specification {
 		when:
 			log.info "Starting path test locally"
 			ActorSystem system = new ActorSystem("Test")
-
+			Thread.sleep(500)
 			success = (null != system.context.actorOf(Child0.props(), 'child0'))
 			system.stop()
 		then:

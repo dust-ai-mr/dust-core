@@ -879,14 +879,21 @@ public class Actor implements Runnable {
             actor.grandParent = parent;
             actor.self = ref;
             ref.mailboxThread = Thread.ofVirtual().start(() -> {
+                /*
+                    Wait until the parent thread finishes setting up the 'ref'
+                    If we are killing *very* shortly after creating and are still
+                    in the await we could error. So have a backup await.
+                */
                 try {
-                    // Wait until the parent thread finishes setting up the 'ref'
                     startupLatch.await();
-                    actor.run();
                 } catch (InterruptedException e) {
-                    log.error("Thread.startVirtualThread() interrupted: " + e.getMessage());
-                    // Thread.currentThread().interrupt();
+                    try {
+                        startupLatch.await();
+                    } catch (InterruptedException e2) {
+                        log.error("Failed to start actor -- interrupted during run() setup");
+                    }
                 }
+                actor.run();
             });
             children.put(name, ref);
             startupLatch.countDown(); // Will let await() continue and start Actor

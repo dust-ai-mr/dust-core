@@ -244,7 +244,7 @@ public class ActorRef implements Serializable {
         int senderId = null != sentMessage.sender() ? sentMessage.sender().hashCode() : ActorRef.NullActorRefID;
         int targetId = sentMessage.remotePath().hashCode();
 
-        //log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
+        // log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
 
         for (int i = 0; i < 10; i++) {
             try {
@@ -260,12 +260,11 @@ public class ActorRef implements Serializable {
                 i = 10;
             }
             catch (Exception e) {
-                log.error("Could not send message {} to {}: {}", sentMessage.message(), path, e);
                 lastException = e;
-                Thread.sleep(5000L);
+                Thread.sleep(10L);
             }
         }
-        throw lastException;
+        throw new RuntimeException("Could not tell(%s) %s".formatted(uri, lastException.getMessage()));
     }
 
     /**

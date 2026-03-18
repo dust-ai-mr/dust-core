@@ -17,27 +17,22 @@ class Create extends Specification {
 	static ActorSystem system
 	static ActorContext context
 	static success = false
+	static int loops = 1000, size = 1000
+	static long deltaT1, deltaT2
 
-	/*
-	   Create (and test the fact we have) an ActorSystem.
-	 */
-	def "Can create ActorSystem"() {
+	def "Multiple Creation"() {
 		when:
 			system = new ActorSystem("Create")
 			context = system.context
-		then:
-			null != context
-	}
 
-	def "Multiple Creation"() {
-		given:
-			def time = System.currentTimeMillis()
-			def loops = 1000, size=1000
-		when:
 			log.info "Starting and destroying $loops * $size Actors"
 			system.context.actorOf(CreatorMonitorActor.props(loops, size)).waitForDeath()
-			time = System.currentTimeMillis() - time
-			log.info "${loops*size} done as $loops batches of $size in ${time} ms.  ${ (loops*size) / (time / 1000.0)} actors created / second"
+			deltaT1 = CreatorMonitorActor.tCreated - CreatorMonitorActor.tStart
+			deltaT2 = CreatorMonitorActor.tStopped - CreatorMonitorActor.tCreated
+
+			log.info "${loops*size} done as $loops batches of $size"
+			log.info "Creation time was ${deltaT1} ms  [${(loops*size*1000f)/deltaT1}] Actors/sec"
+			log.info "Destruction time was ~ ${deltaT2} ms  [${(loops*size*1000f)/deltaT2} Actors/Sec]"
 			success = system.stop()
 		then:
 			success
