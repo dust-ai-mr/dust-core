@@ -38,33 +38,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class ActorSystemConnectionManager {
 
-    int CONNECTIONS = 64;
+    LinkedBlockingQueue<TCPObjectSocket> freeSockets = new LinkedBlockingQueue<>();;
+    Cache<Long, TCPObjectSocket> connections;
 
-    LinkedBlockingQueue<TCPObjectSocket> freeSockets = new LinkedBlockingQueue<>();
-
-    Cache<Long, TCPObjectSocket> connections = Caffeine
-        .newBuilder()
-        .maximumSize(CONNECTIONS)
-        .removalListener((Long key, TCPObjectSocket socket, RemovalCause cause) -> {
-            try {
-                if (! socket.isClosed()) {
-                    socket.send(null);
-                    socket.close();
-                }
-                freeSockets.add(socket);
-            }
-            catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        })
-        .build();
-
-
+    public ActorSystemConnectionManager() {
+        this(64);
+    }
     /**
      * Prepare TCPObject sockets since building serializers is expensive
      */
-    public ActorSystemConnectionManager() {
-        for (int i = 0; i < CONNECTIONS; ++i) {
+    public ActorSystemConnectionManager(int size) {
+
+        connections = Caffeine
+            .newBuilder()
+            .maximumSize(size)
+            .removalListener((Long key, TCPObjectSocket socket, RemovalCause cause) -> {
+                try {
+                    if (! socket.isClosed()) {
+                        socket.send(null);
+                        socket.close();
+                    }
+                    freeSockets.add(socket);
+                }
+                catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            })
+            .build();
+
+        for (int i = 0; i < size; ++i) {
             freeSockets.add(new TCPObjectSocket());
         }
     }

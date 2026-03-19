@@ -1,5 +1,6 @@
 import com.mentalresonance.dust.core.actors.ActorContext
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
@@ -22,7 +23,7 @@ class Create extends Specification {
 
 	def "Multiple Creation"() {
 		when:
-			system = new ActorSystem("Create")
+			system = new ActorSystemBuilder().name("Create").build()
 			context = system.context
 
 			log.info "Starting and destroying $loops * $size Actors"

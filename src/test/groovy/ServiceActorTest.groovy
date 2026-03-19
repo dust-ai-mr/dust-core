@@ -2,6 +2,7 @@ import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.ServiceManagerActor
 import com.mentalresonance.dust.core.msgs.StartMsg
@@ -146,7 +147,7 @@ class ServiceActorTest extends Specification {
 
 	def "ServiceActor Test"() {
 		when:
-			ActorSystem system = new ActorSystem("ServiceActorTest")
+			ActorSystem system = new ActorSystemBuilder().name("ServiceActorTest").build()
 			log.info "Starting Squares"
 			system.context.actorOf( SquareTestActor.props(1000000), "squares").waitForDeath()
 			system.stop()

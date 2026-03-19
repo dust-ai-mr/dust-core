@@ -87,7 +87,7 @@ class StashTest extends Specification {
 
 	def "Stash"() {
 		when:
-			ActorSystem system = new ActorSystem("Stash")
+			ActorSystem system = new ActorSystemBuilder().name("Stash").build()
 			ActorRef stasher = system.context.actorOf( Stasher.props())
 			// Change behavior to stashing message ..
 			stasher.tell(new StartMsg(), null)

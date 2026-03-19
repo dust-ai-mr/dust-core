@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.PoisonPill
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.SupervisionStrategy
@@ -18,7 +19,7 @@ import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*
 @Slf4j
 class AllForOneSupervision extends Specification {
 
-	ActorSystem system = new ActorSystem("AllForOneSupervision")
+	ActorSystem system = new ActorSystemBuilder().name("AllForOneSupervision").build()
 
 	public static boolean stopped = false, restarted = false, resumed = false
 

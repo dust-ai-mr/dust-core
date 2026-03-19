@@ -80,7 +80,7 @@ class MessyShutdown extends Specification {
 
     def "Dead Letter"() {
         when:
-            ActorSystem system = new ActorSystem("MessyShutdown")
+            ActorSystem system = new ActorSystemBuilder().name("MessyShutdown").build()
             ActorRef stopper = system.context.actorOf( Parent.props())
 
             stopper.tell(new StartMsg(), null)

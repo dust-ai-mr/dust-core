@@ -1,4 +1,5 @@
 import com.mentalresonance.dust.core.actors.Actor
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.ActorTrait
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.ActorSystem
@@ -36,7 +37,7 @@ class TraitTest extends Specification {
 
 	def "Trait Test"() {
 		when:
-			ActorSystem system = new ActorSystem("TraitTest")
+			ActorSystem system = new ActorSystemBuilder().name("TraitTest").build()
 			system.context.actorOf( Supervisor.props(), "trait")
 			Thread.sleep(500)
 			system.stop()

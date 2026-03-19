@@ -30,7 +30,7 @@ import spock.lang.Specification
 
 class ShootOut extends Specification {
 
-	static ActorSystem me = new ActorSystem("me")
+	static ActorSystem me = new ActorSystemBuilder().name("me").build()
 	static success = true
 
 	@Slf4j

@@ -47,19 +47,10 @@ public class TCPObjectServer {
     final CompletableFuture<Boolean> haveStopped;
     Thread serverThread;
     private final ActorSystem actorSystem;
-    final int CONNECTIONS = 64;
 
-    LinkedBlockingQueue<TCPObjectSocket> workerSockets = new LinkedBlockingQueue<>(CONNECTIONS+1);
+    LinkedBlockingQueue<TCPObjectSocket> workerSockets;
 
-    Cache<Long, WorkerBee> workerBees = Caffeine
-        .newBuilder()
-        .maximumSize(CONNECTIONS)
-        .evictionListener((Long key, WorkerBee wb, RemovalCause cause) -> {
-            if (wb != null) {
-                wb.getThread().interrupt();
-            }
-        })
-        .build();
+    Cache<Long, WorkerBee> workerBees;
 
     /**
      * A server
@@ -70,14 +61,27 @@ public class TCPObjectServer {
     public TCPObjectServer(
             int port,
             ActorSystem actorSystem,
-            CompletableFuture<Boolean> haveStopped) {
+            CompletableFuture<Boolean> haveStopped,
+            int maxIncomingConnections) {
         this.port = port;
         this.haveStopped = haveStopped;
         this.actorSystem = actorSystem;
 
-        for (int i = 0; i < CONNECTIONS+1; ++i) {
+        workerSockets = new LinkedBlockingQueue<>(maxIncomingConnections+1);
+        workerBees = Caffeine
+            .newBuilder()
+            .maximumSize(maxIncomingConnections)
+            .evictionListener((Long key, WorkerBee wb, RemovalCause cause) -> {
+                if (wb != null) {
+                    wb.getThread().interrupt();
+                }
+            })
+            .build();
+        for (int i = 0; i < maxIncomingConnections+1; ++i) {
             workerSockets.add(new TCPObjectSocket());
         }
+
+
     }
 
     /**

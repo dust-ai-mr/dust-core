@@ -2,6 +2,7 @@ import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.NonDelegatedMsg
 import com.mentalresonance.dust.core.msgs.StartMsg
@@ -87,7 +88,7 @@ class DelegationTest extends Specification {
 
 	def "Delegate"() {
 		when:
-			ActorSystem system = new ActorSystem("DelegateTest")
+			ActorSystem system = new ActorSystemBuilder().name("DelegateTest").build()
 			ActorRef client = system.context.actorOf(ClientActor.props(), 'client')
 
 			client.tell("Hello", null)  // client

@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.PipelineActor
 import com.mentalresonance.dust.core.actors.ActorSystem
@@ -55,7 +56,7 @@ class PipelineTest extends Specification {
 	def "Pipeline"() {
 
 		when:
-			ActorSystem system = new ActorSystem("Test")
+			ActorSystem system = new ActorSystemBuilder().name("Test").build()
 			Add1Msg msg = new Add1Msg()
 			List<Props> props = []
 			List<String> names = []

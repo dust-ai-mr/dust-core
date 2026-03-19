@@ -1,4 +1,5 @@
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.msgs.PingMsg
 import com.mentalresonance.dust.core.actors.ActorSystem
 import com.mentalresonance.dust.core.actors.lib.PingActor
@@ -14,7 +15,7 @@ class PingPong extends Specification {
 
 	def "Ping Ponger"() {
 		when:
-			ActorSystem system = new ActorSystem("PingPong")
+			ActorSystem system = new ActorSystemBuilder().name("PingPong").build()
 
 			log.info "Sending 40,000,000 messages ..."
 			ActorRef ping2 = system.context.actorOf(PingActor.props(10000000), 'ping2')

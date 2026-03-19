@@ -1,6 +1,4 @@
 import com.mentalresonance.dust.core.actors.*
-import com.mentalresonance.dust.core.actors.lib.PingActor
-import com.mentalresonance.dust.core.msgs.PingMsg
 import com.mentalresonance.dust.core.msgs.StartMsg
 import com.mentalresonance.dust.core.msgs.Terminated
 import groovy.util.logging.Slf4j
@@ -15,10 +13,10 @@ import spock.lang.Specification
 class RemoteShootOut extends Specification {
 
 
-	static ActorSystem sys1 = new ActorSystem("sys1", 9096)
-	static ActorSystem sys2 = new ActorSystem("sys2", 9097)
-	static ActorSystem sys3 = new ActorSystem("sys3", 9098)
-	static ActorSystem me = new ActorSystem("sys3", 9099)
+	static ActorSystem sys1 = new ActorSystemBuilder().name("sys1").port(9096).build()
+	static ActorSystem sys2 = new ActorSystemBuilder().name("sys2").port(9097).build()
+	static ActorSystem sys3 = new ActorSystemBuilder().name("sys3").port(9098).build()
+	static ActorSystem me = new ActorSystemBuilder().name("sys3").port(9099).build()
 
 	static success = true
 

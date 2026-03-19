@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Cancellable
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.StopMsg
@@ -71,7 +72,7 @@ class Watch extends Specification {
 	 */
 	def "Suicide Pact 1"() {
 		when:
-			ActorSystem system = new ActorSystem("WatchTest")
+			ActorSystem system = new ActorSystemBuilder().name("WatchTest").build()
 
 			ActorRef w1 = system.context.actorOf( Watcher.props(1000), "W1")
 			ActorRef w2 = system.context.actorOf( Watcher.props(2000), "W2")

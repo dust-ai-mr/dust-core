@@ -1,3 +1,4 @@
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.PoisonPill
 import com.mentalresonance.dust.core.actors.lib.LogActor
 import com.mentalresonance.dust.core.actors.ActorSystem
@@ -29,7 +30,7 @@ class Path extends Specification {
 	def "Actor Selection to Path"() {
 		when:
 			log.info "Starting path test locally"
-			system = new ActorSystem("Test")
+			system = new ActorSystemBuilder().name("Test").build()
 			// Create instance of LogActor and get the reference from the creation (which will be /user/logger)
 			var log = system.context.actorOf(LogActor.props(), "logger")
 			log.tell(new DummyMsg("'From creation'"), null)
@@ -57,13 +58,13 @@ class Path extends Specification {
 	def "Actor Selection to Remote Path"() {
 		when:
 			log.info "Starting path test remotely"
-			system = new ActorSystem("Path", 9099)
+			system = new ActorSystemBuilder().name("Path").port(9098).build()
 			success = false
 
 			var log = system.context.actorOf(LogActor.props(), "logger")
 			log.tell(new DummyMsg("'From creation'"), null)
 
-			var log2 = system.context.actorSelection("dust://localhost:9099/Test/user/logger")
+			var log2 = system.context.actorSelection("dust://localhost:9098/Test/user/logger")
 			log2.tell(new DummyMsg("'From remote selection'"), null)
 			/*
 			 * Since we cannot waitForDeath() on remote refs at the moment (even though the Actor is running

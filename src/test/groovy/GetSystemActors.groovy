@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.LogActor
 import groovy.util.logging.Slf4j
@@ -32,7 +33,7 @@ class GetSystemActors extends Specification {
 
 	def "Get System Actors"() {
 		when:
-			ActorSystem system = new ActorSystem("Get System Actors")
+			ActorSystem system = new ActorSystemBuilder().name("Get System Actors").build()
 			success = system.context.getDeadLetterActor() && system.context.getUserActor()
 			system.stop()
 		then:

@@ -32,8 +32,8 @@ import spock.lang.Specification
 class RemoteSpray extends Specification {
 
 
-	static ActorSystem sys1 = new ActorSystem("sys1", 9096)
-	static ActorSystem me = new ActorSystem("sys3", 9099)
+	static ActorSystem sys1 = new ActorSystemBuilder().name("sys1").port(9096).build()
+	static ActorSystem me = new ActorSystemBuilder().name("sys3").port(9099).build()
 
 	static success = true
 

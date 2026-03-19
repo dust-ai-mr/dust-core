@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.PingMsg
 import com.mentalresonance.dust.core.actors.ActorSystem
@@ -23,9 +24,9 @@ import spock.lang.Specification
 
 class RemotePingPong2 extends Specification {
 
-	ActorSystem me = new ActorSystem("me", 9097)  // I'm watching remote Actors so I need to be remote
-	static ActorSystem system1 = new ActorSystem("RemotePingPong1", 9098)
-	static ActorSystem system2 = new ActorSystem("RemotePingPong2", 9099)
+	ActorSystem me = new ActorSystemBuilder().name("me").port(9097).build()  // I'm watching remote Actors so I need to be remote
+	static ActorSystem system1 = new ActorSystemBuilder().name("RemotePingPong1").port(9098).build()
+	static ActorSystem system2 = new ActorSystemBuilder().name("RemotePingPong2").port(9099).build()
 
 	@Slf4j
 	static class Runner extends Actor {

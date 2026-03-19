@@ -22,6 +22,7 @@ package com.mentalresonance.dust.core.actors;
 import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
+import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.net.TCPObjectSocket;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -134,7 +135,10 @@ public class ActorRef implements Serializable {
      */
     public final static int LC_INTERRUPT_RESTART = 6;
 
-    public static int NullActorRefID = "NULL".hashCode();  // This is unique
+    public static int NullActorRefID = "NULL".hashCode();  // Used as srcId for remote messages involving null sender
+
+    @Setter
+    private transient ActorSystemConnectionManager actorSystemConnectionManager;
 
     /**
      * Construct ActorRef in the context to Actor at path. If actor is null then
@@ -148,6 +152,7 @@ public class ActorRef implements Serializable {
         this.context = context;
         this.host = context.hostContext;
         this.actor = actor;
+        actorSystemConnectionManager = context.system.actorSystemConnectionManager;
         makeAncestors();
     }
 
@@ -163,6 +168,7 @@ public class ActorRef implements Serializable {
         this.name = name;
         this.host = context.hostContext;
         this.actor = actor;
+        actorSystemConnectionManager = context.system.actorSystemConnectionManager;
         makeAncestors();
     }
 
@@ -241,16 +247,19 @@ public class ActorRef implements Serializable {
         TCPObjectSocket socket;
         URI uri = new URI(path);
         Exception lastException = null;
-        int senderId = null != sentMessage.sender() ? sentMessage.sender().hashCode() : ActorRef.NullActorRefID;
+        ActorRef sender = sentMessage.sender();
+        int senderId = null != sender ? sender.hashCode() : ActorRef.NullActorRefID;
         int targetId = sentMessage.remotePath().hashCode();
 
         // log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
 
         for (int i = 0; i < 10; i++) {
             try {
-                socket = context.system.actorSystemConnectionManager.getSocket(sentMessage.sender(), senderId, targetId, uri);
+                socket = actorSystemConnectionManager.getSocket(sender, senderId, targetId, uri);
                 socket.send(sentMessage);
-                if (null == sentMessage.sender())
+                // If no sender then we have to serialize messages using an 'Ack' from the server
+                // This ACK is a 0 payload size message so only need to read the header
+                if (null == sender)
                     socket.readHeader();
                 return;
             }

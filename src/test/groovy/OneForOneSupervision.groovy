@@ -13,7 +13,7 @@ import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*
 @Slf4j
 class OneForOneSupervision extends Specification {
 
-	ActorSystem system = new ActorSystem("OneForOneSupervision")
+	ActorSystem system = new ActorSystemBuilder().name("OneForOneSupervision").build()
 
 	@Slf4j
 	static class Supervisor extends Actor {

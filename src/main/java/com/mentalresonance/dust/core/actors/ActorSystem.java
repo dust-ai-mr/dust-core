@@ -30,7 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
-import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -76,7 +75,7 @@ public class ActorSystem {
     /**
      * Manage connection pool to remote Actor Systems
      */
-    final ActorSystemConnectionManager actorSystemConnectionManager;
+    ActorSystemConnectionManager actorSystemConnectionManager;
 
     /**
      * We might stop the ActorSystem but then get a shutdown message (via the shutdown hook) at a later data
@@ -87,103 +86,36 @@ public class ActorSystem {
     private boolean isStopped = false;
 
     /**
-     * Create local only Actor system
-     *
-     * @param name - ActorSystem name
-     * @throws ActorInstantiationException creating core service Actors
-     * @throws IOException creating core service Actors
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     */
-    public ActorSystem(String name)
-            throws ActorInstantiationException, IOException, InvocationTargetException,
-            NoSuchMethodException, InstantiationException, IllegalAccessException {
-        this(name, null, true);
-    }
-
-    /**
-     * Create local only Actor system
-     *
-     * @param name           - actorSystem name
-     * @param logDeadLetters - if tru then dead letter deliveries are logged
-     * @throws ActorInstantiationException creating core service Actors
-     * @throws IOException creating core service Actors
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     */
-    public ActorSystem(String name, boolean logDeadLetters)
-            throws ActorInstantiationException, IOException, InvocationTargetException,
-            NoSuchMethodException, InstantiationException, IllegalAccessException {
-        this(name, null, logDeadLetters);
-    }
-
-    /**
      * Create remoting Actor system with name on port
-     *
-     * @param name unique (on this host) actor name
-     * @param port on this port
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     * @throws ActorInstantiationException creating core service Actors
-     */
-    public ActorSystem(String name, Integer port)
-            throws InvocationTargetException, NoSuchMethodException, InstantiationException,
-            IllegalAccessException, ActorInstantiationException {
-
-        this(name, port, true);
-    }
-
-    /**
-     * Create remoting Actor system with name on port
-     *
+     * @param host
      * @param name           unique (on this host) actor name
      * @param port           on this port
      * @param logDeadLetters if true log dead letters
+     * @param maxOutgoingConnection max # of outgoing connection
+     * @param maxIncomingConnection max # of incoming connection
      * @throws InvocationTargetException creating core service Actors
      * @throws NoSuchMethodException creating core service Actors
      * @throws InstantiationException creating core service Actors
      * @throws IllegalAccessException creating core service Actors
      * @throws ActorInstantiationException creating core service Actors
      */
-    public ActorSystem(String name, Integer port, boolean logDeadLetters)
-            throws InvocationTargetException, NoSuchMethodException, InstantiationException,
-            IllegalAccessException, ActorInstantiationException {
-
-        this.host = "localhost";
-        this.name = name;
-        this.port = port;
-        actorSystemConnectionManager = new ActorSystemConnectionManager();
-        init(logDeadLetters);
-        log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
-    }
-
-    /**
-     * Create remoting Actor system with name on port
-     * @param host           host address for remoting
-     * @param name           unique (on this host) actor name
-     * @param port           on this port
-     * @param logDeadLetters if true log dead letters
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     * @throws ActorInstantiationException creating core service Actors
-     */
-    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters)
+    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters, int maxOutgoingConnection, int maxIncomingConnection)
         throws InvocationTargetException, NoSuchMethodException, InstantiationException,
         IllegalAccessException, ActorInstantiationException {
 
         this.host = host;
         this.name = name;
         this.port = port;
-        actorSystemConnectionManager = new ActorSystemConnectionManager();
         init(logDeadLetters);
+        if (null != port) {
+            try {
+                actorSystemConnectionManager = new ActorSystemConnectionManager(maxOutgoingConnection);
+                context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
+                haveStopped = runServer(port, actorSystemConnectionManager, this, maxIncomingConnection);
+            } catch (IOException e) {
+                log.error(String.format("Cannot start server on host %s port %d", host, port));
+            }
+        }
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
     }
 
@@ -209,15 +141,6 @@ public class ActorSystem {
         context.setGuardianActor(guardianRef);
         guardian.actor.setContext(context);
         guardian.actor.init(logDeadLetters);
-
-        if (null != port) {
-            try {
-                context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
-                haveStopped = runServer(port, actorSystemConnectionManager, this);
-            } catch (IOException e) {
-                log.error(String.format("Cannot start server on host %s port %d", host, port));
-            }
-        }
 
         // Shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(
@@ -313,7 +236,8 @@ public class ActorSystem {
     CompletableFuture<Boolean> runServer(
         int port,
         ActorSystemConnectionManager actorSystemConnectionManager,
-        ActorSystem actorSystem
+        ActorSystem actorSystem,
+        int maxIncomingConnections
     ) throws IOException
     {
         CompletableFuture<Boolean> haveStopped = new CompletableFuture<>();
@@ -321,7 +245,8 @@ public class ActorSystem {
         server = new TCPObjectServer(
             port,
             this,
-            haveStopped
+            haveStopped,
+            maxIncomingConnections
         );
 
         this.port = port;
@@ -356,8 +281,9 @@ public class ActorSystem {
                     target.setIsDeadLetter(true);
                 }
                 if (null != sender) {
-                    // Sender has everything but a context to work with
+                    // Sender has everything but a context and connection manager to work with
                     sender.context = context;
+                    sender.setActorSystemConnectionManager(actorSystemConnectionManager);
                 }
 
                 Serializable message = msg.message();
@@ -365,6 +291,7 @@ public class ActorSystem {
                 // Likewise ActorRefs
                 if (message instanceof ActorRef) {
                     ((ActorRef)message).context = context;
+                    ((ActorRef)message).setActorSystemConnectionManager(actorSystemConnectionManager);
                 }
                 //log.info("Sending {} from {} to {}", message, sender, target);
                 target.tell(message, sender);

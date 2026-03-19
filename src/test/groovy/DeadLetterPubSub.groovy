@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.PingMsg
 import com.mentalresonance.dust.core.msgs.PubSubMsg
@@ -51,7 +52,7 @@ class DeadLetterPubSub extends Specification {
 
 	def "Dead Letter Pub Sub"() {
 		when:
-			ActorSystem system = new ActorSystem("DeadLetterPubSub")
+			ActorSystem system = new ActorSystemBuilder().name("DeadLetterPubSub").build()
 			// Create a subscriber - give it time to subscribe
 			ActorRef subscriberRef = system.context.actorOf(Subscriber.props(), "subscriber")
 			Thread.sleep(500L)

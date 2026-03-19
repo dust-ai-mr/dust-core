@@ -1,5 +1,6 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.StartMsg
 import com.mentalresonance.dust.core.msgs.StopMsg
@@ -59,7 +60,7 @@ class DeadMansHandleCancelTest extends Specification {
 
 	def "DeadMansHandleCancel" () {
 		when:
-			ActorSystem system = new ActorSystem("DeadMansHandleCancel")
+			ActorSystem system = new ActorSystemBuilder().name("DeadMansHandleCancel").build()
 			system.context.actorOf(DeadMansHandleTestActor.props(), 'test').waitForDeath()
 			system.stop()
 					then:

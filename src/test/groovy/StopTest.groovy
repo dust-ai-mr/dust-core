@@ -1,5 +1,6 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.StopMsg
 import com.mentalresonance.dust.core.actors.ActorSystem
@@ -36,7 +37,7 @@ class StopTest extends Specification {
 
 	def "Stop"() {
 		when:
-			ActorSystem system = new ActorSystem("StopTest")
+			ActorSystem system = new ActorSystemBuilder().name("StopTest").build()
 			log.info "Starting ...."
 			system.context.actorOf(StopActor.props(), 'test').waitForDeath();
 			log.info "Stopped"

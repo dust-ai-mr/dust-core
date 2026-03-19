@@ -1,5 +1,6 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.PoisonPill
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.LogActor
@@ -63,8 +64,8 @@ class ChildResolution extends Specification {
 	def "Child Resolution"() {
 		when:
 			log.info "Starting path test locally"
-			ActorSystem system = new ActorSystem("Test")
-			Thread.sleep(500)
+			ActorSystem system = new ActorSystemBuilder().name("Test").build()
+			Thread.sleep(1000)
 			success = (null != system.context.actorOf(Child0.props(), 'child0'))
 			system.stop()
 		then:

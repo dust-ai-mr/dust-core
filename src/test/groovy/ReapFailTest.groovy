@@ -2,6 +2,7 @@ import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.ReaperActor
 import com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg
@@ -149,7 +150,7 @@ class ReapFailTest extends Specification {
 
 	def "Reap"() {
 		when:
-			ActorSystem system = new ActorSystem("ReapTest")
+			ActorSystem system = new ActorSystemBuilder().name("ReapTest").build()
 			system.context.actorOf(ParentActor.props(), 'parent')
 			system.context.actorOf(ClientActor.props(), 'client').waitForDeath();
 			system.stop()

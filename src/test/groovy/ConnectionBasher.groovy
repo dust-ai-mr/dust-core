@@ -15,8 +15,8 @@ import spock.lang.Specification
 class ConnectionBasher extends Specification {
 
 
-	static ActorSystem sys1 = new ActorSystem("me", 9096)
-	static ActorSystem sys2 = new ActorSystem("remote", 9097)
+	static ActorSystem sys1 = new ActorSystemBuilder().name("me").port(9096).build()
+	static ActorSystem sys2 = new ActorSystemBuilder().name("remote").port(9097).build()
 
 	static success = true
 

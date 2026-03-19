@@ -1,5 +1,6 @@
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.PingActor
 import com.mentalresonance.dust.core.msgs.PingMsg
@@ -57,7 +58,7 @@ class FuturePingPong extends Specification {
 
 	def "Future Ping Pong"() {
 		when:
-			ActorSystem system = new ActorSystem("FuturePingPong")
+			ActorSystem system = new ActorSystemBuilder().name("FuturePingPong").build()
 			log.info "Starting PingPong"
 			system.context.actorOf(FuturePingActor.props(5000000), 'ping')
 			system.context.actorOf(FuturePingActor.props(5000000), 'pong')
