@@ -272,6 +272,7 @@ public class ActorRef implements Serializable {
                 lastException = e;
                 Thread.sleep(10L);
             }
+            actorSystemConnectionManager.returnSocket(senderId, targetId);
         }
         throw new RuntimeException("Could not tell(%s) %s".formatted(uri, lastException.getMessage()));
     }

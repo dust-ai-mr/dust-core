@@ -117,7 +117,7 @@ public class ActorSystemConnectionManager {
                         });
                     }
                     Thread.sleep(0, 500); // Allow a little time for any cache maniplation to take root
-                                          // In the very rare case this sin't enough and we time out here
+                                          // In the very rare case this isn't enough and we time out here
                                           // the tell() will retry (handling the IOException)
                     continue;
 
@@ -138,12 +138,24 @@ public class ActorSystemConnectionManager {
             }
         }
         log.warn("Cannot get connection to remote actor: {} {}", uri, key);
+        // Socket is probably cached and damaged - return it to freepool where it will get cleaned up
+        // Then let our caller retry
+        connections.invalidate(key);
         throw new IOException();
+    }
+
+    /**
+        Force return of a socket. Usually done by client if a tell fails. This can be because of broken pipes
+     *  and invalidating it will close the underlying socket so a retry will work.
+     */
+    public void returnSocket(int srcId, int targetId) {
+        connections.invalidate(getCombinedIds(srcId, targetId));
     }
 
     private long getCombinedIds(int srcId, int targetId) {
         return (((long) srcId) << 32) | (targetId & 0xFFFFFFFFL);
     }
+
 
     /**
      * Takes a TCPObject and associates it with a key
