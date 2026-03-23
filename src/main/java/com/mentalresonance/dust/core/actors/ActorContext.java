@@ -240,8 +240,14 @@ public class ActorContext {
                  */
                 if (null == resolved) {
                     log.trace("{} not found", path);
-                    resolved = deadLetterRef(path);
-                } else {
+                    if (system.isStopped()) {
+                        log.error("System is stopped, cannot resolve {}", path);
+                        throw new ActorSelectionException("System is stopped, cannot resolve " + path);
+                    }
+                    else
+                        resolved = deadLetterRef(path);
+                }
+                else {
                     log.trace("{} resolved", path);
                     resolvePaths.put(path, resolved);
                 }

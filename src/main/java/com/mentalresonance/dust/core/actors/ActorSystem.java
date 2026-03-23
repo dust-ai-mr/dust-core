@@ -145,8 +145,8 @@ public class ActorSystem {
         // Shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(
                 () -> {
+                    System.out.println("GOT SHUTDOWN - stopping !");
                     if (!isStopped) {
-                        log.warn("GOT SHUTDOWN - stopping !");
                         stop();
                     }
                 }

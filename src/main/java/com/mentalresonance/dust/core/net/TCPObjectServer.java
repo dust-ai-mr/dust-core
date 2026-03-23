@@ -93,14 +93,15 @@ public class TCPObjectServer {
     public void start(ActorSystem actorSystem) throws IOException {
         serverThread = Thread.ofVirtual().start(
             () ->  {
-                ServerSocketChannel server = null;
+                ServerSocketChannel serverSocketChannel = null;
                 try {
-                    server = ServerSocketChannel.open();
-                    server.bind(new InetSocketAddress(port));
-                    log.trace ("Remoting Server started on socket {}", server.socket());
+                    serverSocketChannel = ServerSocketChannel.open();
+                    serverSocketChannel.bind(new InetSocketAddress(port));
+                    log.info ("Remoting Server started on socket {}", serverSocketChannel.socket());
                     while (true)
                     {
-                        SocketChannel client = server.accept();   // blocking accept
+                        log.trace("{} Waiting for connection", this);
+                        SocketChannel client = serverSocketChannel.accept();   // blocking accept
                         log.trace("{} Accepted connection from {}", this, client.getRemoteAddress());
                         TCPObjectSocket socket = workerSockets.poll(5, TimeUnit.SECONDS);
                         if (socket == null) {
@@ -134,9 +135,9 @@ public class TCPObjectServer {
                 }
                 catch (ClosedByInterruptException ignored) {  // How we stop
                     // All worker sockets will be closed
-                    if (server != null && !server.socket().isClosed()) {
+                    if (serverSocketChannel != null && !serverSocketChannel.socket().isClosed()) {
                         try {
-                            server.socket().close();
+                            serverSocketChannel.socket().close();
                         } catch (IOException e) {
                             log.error ("Error closing server socket: {} on port: {}", e.getMessage(), port);
                         }
@@ -145,7 +146,12 @@ public class TCPObjectServer {
                 catch (Exception e) {
                     e.printStackTrace();
                 }
-                log.trace("Remoting Server stopped on socket: {}", server.socket());
+
+                workerBees.asMap().values().forEach(w -> w.getThread().interrupt());
+                workerSockets.clear();
+
+                log.info("Remoting Server stopped on socket: {}", serverSocketChannel.socket());
+
                 haveStopped.complete(true);
             }
         );
@@ -197,7 +203,7 @@ public class TCPObjectServer {
         {
             int payloadSize;
 
-            while(true)
+            while(!actorSystem.isStopped())
             {
                 try {
                     payloadSize = socket.readHeader();
@@ -222,6 +228,9 @@ public class TCPObjectServer {
                     break;
                 }
             }
+            if (actorSystem.isStopped())
+                log.trace("Stopped because of system shutdown");
+
             returnSocket(socket); // This will close the underlying socket
             workerBees.invalidate(id); // Will not trigger eviction listener
         }

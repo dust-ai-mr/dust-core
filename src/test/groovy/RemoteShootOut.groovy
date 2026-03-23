@@ -16,7 +16,7 @@ class RemoteShootOut extends Specification {
 	static ActorSystem sys1 = new ActorSystemBuilder().name("sys1").port(9096).build()
 	static ActorSystem sys2 = new ActorSystemBuilder().name("sys2").port(9097).build()
 	static ActorSystem sys3 = new ActorSystemBuilder().name("sys3").port(9098).build()
-	static ActorSystem me = new ActorSystemBuilder().name("sys3").port(9099).build()
+	static ActorSystem me = new ActorSystemBuilder().name("me").port(9099).build()
 
 	static success = true
 

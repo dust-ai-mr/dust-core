@@ -23,16 +23,16 @@ import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
 import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
+import com.mentalresonance.dust.core.net.RemotePayloadSizeException;
 import com.mentalresonance.dust.core.net.TCPObjectSocket;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 import java.net.URI;
+import java.nio.channels.ClosedByInterruptException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.LockSupport;
-
-import static com.mentalresonance.dust.core.net.ActorSystemConnectionManager.WrappedTCPObjectSocket;
 
 
 /**
@@ -209,7 +209,8 @@ public class ActorRef implements Serializable {
                         if (deadLetterRef != null && !deadLetterRef.mailBox.dead) { // We may be globally stopping
                             deadLetterRef.tell(new DeadLetter(sentMessage.message(), path, sender), null);
                         }
-                    }
+                    } else
+                        log.info("{} was in shutdown", this);
                 }
             }
             else {
@@ -253,7 +254,7 @@ public class ActorRef implements Serializable {
 
         // log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 5; i++) {
             try {
                 socket = actorSystemConnectionManager.getSocket(sender, senderId, targetId, uri);
                 socket.send(sentMessage);
@@ -263,10 +264,17 @@ public class ActorRef implements Serializable {
                     socket.readHeader();
                 return;
             }
-            catch (InterruptedException ie) {
-                log.error("Could not send message {} to {}: Interrupted", sentMessage.message(), path);
+            catch (InterruptedException | ClosedByInterruptException ie) {
+                log.error("Could not send message {} to {}: Interrupted ", sentMessage.message(), path);
                 lastException = ie;
-                i = 10;
+                try { Thread.sleep(1000); }
+                    catch (InterruptedException e) { Thread.sleep(1000); }
+                // i = 5;
+            }
+            catch (RemotePayloadSizeException re) {
+                log.error("Could not send message {} to {}: Payload size error" , sentMessage.message(), path);
+                lastException = re;
+                i = 5;
             }
             catch (Exception e) {
                 lastException = e;
@@ -396,6 +404,12 @@ public class ActorRef implements Serializable {
         }
     }
 
+    public ActorRef remotify() {
+        if (host.contains(":") && !path.contains(":"))
+            path = host + path;
+        return this;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (mailBox != null)
@@ -404,7 +418,7 @@ public class ActorRef implements Serializable {
             if (!(o instanceof ActorRef))
                 return false;
             else
-                return path.equals(((ActorRef)o).path);
+                return remotify().path.equals(((ActorRef)o).remotify().path);
         }
     }
 

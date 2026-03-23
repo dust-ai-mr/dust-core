@@ -53,16 +53,19 @@ public class ActorSystemConnectionManager {
             .newBuilder()
             .maximumSize(size)
             .removalListener((Long key, TCPObjectSocket socket, RemovalCause cause) -> {
+                log.trace("Removing socket: {} for cause: {}", socket, cause);
                 try {
-                    if (! socket.isClosed()) {
-                        socket.send(null);
-                        socket.close();
-                    }
-                    freeSockets.add(socket);
+                    socket.send(null);
+                    socket.close();
+                } catch (IOException ie) {
+                    // Pipe may have been broken
+                    socket.close();
                 }
                 catch (Exception e) {
-                    throw new RuntimeException(e);
+                    log.error("Error removing socket: {}", e.getMessage());
                 }
+
+                freeSockets.add(socket);
             })
             .build();
 
@@ -73,26 +76,31 @@ public class ActorSystemConnectionManager {
 
     public TCPObjectSocket getSocket(ActorRef sender, int srcId, int targetId, URI uri) throws IOException, InterruptedException {
         Long key = getCombinedIds(srcId, targetId);
-        int retries = 5;
+        int retries = 10;
+        Exception lastException = null;
 
         while (--retries >= 0) {
             try {
+                if(connections.asMap().containsKey(key))
+                    log.trace("Reusing cached socket for {} -> {}", sender, uri);
                 TCPObjectSocket sock =  connections.get(key, (id) -> {
                     TCPObjectSocket socket = freeSockets.poll();
                     if (null != socket) {
                         try {
-                            // log.info("New connection {} to {} id={} srcId={} src={}", socket, uri, id, srcId, sender);
+                            log.trace("New connection {} to {} id={} srcId={} src={}", socket, uri, id, srcId, sender);
                             socket.wrap(SocketChannel.open(new InetSocketAddress(uri.getHost(), uri.getPort())));
                             socket.setSrcId(srcId);
                             socket.setTargetId(targetId);
                         }
                         catch (IOException e) {
+                            log.trace("Error connecting to socket {}: {}", socket, e.getMessage());
                             throw new RuntimeException(e);
                         }
                     }
                     return socket;
                 });
                 if (null == sock) {
+                    log.trace("No free sockets");
                     /*
                        No free sockets so walk connections to see if any related socket warps a closed channel
                        Return them and try again
@@ -113,10 +121,12 @@ public class ActorSystemConnectionManager {
 
                             if (oldestEntry != null) {
                                 connections.invalidate(oldestEntry.getKey());
+                            } else {
+                                log.error("No sockets to return");
                             }
                         });
                     }
-                    Thread.sleep(0, 500); // Allow a little time for any cache maniplation to take root
+                    Thread.sleep(0, 500000); // Allow a little time for any cache manipulation to take root
                                           // In the very rare case this isn't enough and we time out here
                                           // the tell() will retry (handling the IOException)
                     continue;
@@ -133,11 +143,17 @@ public class ActorSystemConnectionManager {
                 return sock;
             }
             catch (RuntimeException e) {
-                log.warn("Failed to get connection to: {}. Retrying.", uri);
-                Thread.sleep(3000L);
+                lastException = e;
+                log.trace("Failed to get connection to: {} [{}]. Retrying.", uri, key);
+                connections.invalidate(key);
+                try {
+                    Thread.sleep(500L);
+                } catch (Exception ex) {
+                    log.error("Sleep in getSocket was interrupted");
+                }
             }
         }
-        log.warn("Cannot get connection to remote actor: {} {}", uri, key);
+        log.warn("Cannot get connection to remote actor: {} {} {}", uri, key, lastException);
         // Socket is probably cached and damaged - return it to freepool where it will get cleaned up
         // Then let our caller retry
         connections.invalidate(key);

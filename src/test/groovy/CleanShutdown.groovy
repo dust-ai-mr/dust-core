@@ -58,7 +58,7 @@ import com.mentalresonance.dust.core.msgs.StartMsg
 			}
 		}
 
-		def "Dead Letter"() {
+		def "Clean Shutdown"() {
 			when:
 				ActorSystem system = new ActorSystemBuilder().name("CleanShutdown").build()
 				ActorRef stopper = system.context.actorOf( Stopper.props())

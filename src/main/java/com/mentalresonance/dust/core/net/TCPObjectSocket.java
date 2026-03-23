@@ -20,7 +20,7 @@ public class TCPObjectSocket {
 
     // Header now contains: PayloadSize (4) + srcId (4) + targetId (4) = 12 bytes
     private static final int HEADER_SIZE = 12;
-    private static final int DEFAULT_CAPACITY = 64 * 1024 + HEADER_SIZE;
+    private static final int DEFAULT_CAPACITY = 8 * 1024;
     private static final int MAX_FRAME_SIZE = 8 * 1024 * 1024;
 
     private final Fory fory;
@@ -86,20 +86,20 @@ public class TCPObjectSocket {
         }
 
         while (true) {
-            buffer.clear();
-            // Start writing payload after the full 12-byte header
-            buffer.position(HEADER_SIZE);
-            mem.readerIndex(0);
-            mem.writerIndex(HEADER_SIZE);
 
             try {
+                buffer.clear();
+                // Start writing payload after the full 12-byte header
+                buffer.position(HEADER_SIZE);
+                mem.readerIndex(0);
+                mem.writerIndex(HEADER_SIZE);
                 fory.serialize(mem, obj);
 
                 int end = mem.writerIndex();
                 int payloadSize = end - HEADER_SIZE;
 
-                if (payloadSize < 0 || payloadSize > MAX_FRAME_SIZE) {
-                    throw new IOException("Serialized payload exceeds max frame size: " + payloadSize);
+                if (payloadSize < 0 || payloadSize + HEADER_SIZE > MAX_FRAME_SIZE) {
+                    throw new RemotePayloadSizeException("Serialized payload size " + payloadSize + " exceeds max frame size: " + MAX_FRAME_SIZE);
                 }
 
                 // Write header fields at absolute positions
@@ -114,8 +114,9 @@ public class TCPObjectSocket {
                 // log.info("Sent {} bytes (Payload: {}) for {}", end, payloadSize, obj);
                 return;
             } catch (IndexOutOfBoundsException | BufferOverflowException | IllegalArgumentException e) {
-                int needed = Math.max(buffer.capacity() * 2, estimateNeededCapacity());
-                ensureCapacity(Math.min(needed, MAX_FRAME_SIZE + HEADER_SIZE));
+                ByteBuffer newBuffer = ByteBuffer.allocateDirect(2*buffer.capacity());
+                this.buffer = newBuffer;
+                this.mem = MemoryUtils.wrap(newBuffer);
             }
         }
     }
