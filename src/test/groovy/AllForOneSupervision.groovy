@@ -112,7 +112,7 @@ class AllForOneSupervision extends Specification {
 	 */
 	def "Stop Supervision"() {
 		when:
-			log.info "Starting 'Stop' strategy"
+			log.info ">>>>>>>>>>>>> Starting 'Stop' strategy"
 			system.context.actorOf( Supervisor.props(SS_STOP, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
@@ -124,7 +124,7 @@ class AllForOneSupervision extends Specification {
 
 	def "Resume Supervision"() {
 		when:
-			log.info "Starting 'Resume' strategy"
+			log.info ">>>>>>>>>>>>>>> Starting 'Resume' strategy"
 			stopped = false; restarted = false; resumed = false
 			system.context.actorOf( Supervisor.props(SS_RESUME, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
@@ -137,7 +137,7 @@ class AllForOneSupervision extends Specification {
 
 	def "Restart Supervision"() {
 		when:
-			log.info "Starting 'Restart' strategy"
+			log.info ">>>>>>>>>>> Starting 'Restart' strategy"
 			stopped = false; restarted = false; resumed = false
 			system.context.actorOf( Supervisor.props(SS_RESTART, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()

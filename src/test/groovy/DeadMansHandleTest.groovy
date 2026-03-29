@@ -47,6 +47,7 @@ class DeadMansHandleTest extends Specification {
 
 	def "DeadMansHandle" () {
 		given:
+			log.info ">>>>>>>>>>>>> DeadMansHandle"
 			ActorSystem system = new ActorSystemBuilder().name("DeadMansHandle").build()
 			system.context.actorOf(DeadMansHandleTestActor.props(), 'test').waitForDeath()
 			system.stop()

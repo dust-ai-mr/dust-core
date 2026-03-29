@@ -55,8 +55,9 @@ class RemoteWatch extends Specification {
 		}
 	}
 
-	def "Suicide Pact 2"() {
+	def "Remote Watch"() {
 		when:
+			log.info ">>>>>>>>>>> Remote Watch"
 			ActorSystem system = new ActorSystemBuilder().name("WatchTest2").port(9096).build()
 			ActorSystem remoteSystem = new ActorSystemBuilder().name("RemoteWatchTest2").port(9000).build()
 

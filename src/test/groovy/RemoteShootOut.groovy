@@ -143,6 +143,7 @@ class RemoteShootOut extends Specification {
 
 	def "Shootout"() {
 		when:
+			log.info ">>>>>>>>>>> Shootout"
 			def clip = 500000
 
 			long time = System.currentTimeMillis()

@@ -37,6 +37,7 @@ class TraitTest extends Specification {
 
 	def "Trait Test"() {
 		when:
+			log.info ">>>>>>>>>>> Trait Test"
 			ActorSystem system = new ActorSystemBuilder().name("TraitTest").build()
 			system.context.actorOf( Supervisor.props(), "trait")
 			Thread.sleep(500)

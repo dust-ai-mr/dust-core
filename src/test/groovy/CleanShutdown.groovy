@@ -60,6 +60,7 @@ import com.mentalresonance.dust.core.msgs.StartMsg
 
 		def "Clean Shutdown"() {
 			when:
+				log.info ">>>>>>>>>>>>>>>> Clean Shutdown"
 				ActorSystem system = new ActorSystemBuilder().name("CleanShutdown").build()
 				ActorRef stopper = system.context.actorOf( Stopper.props())
 				stopper.tell(new StartMsg(), null)

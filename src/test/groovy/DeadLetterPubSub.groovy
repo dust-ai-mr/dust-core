@@ -52,6 +52,7 @@ class DeadLetterPubSub extends Specification {
 
 	def "Dead Letter Pub Sub"() {
 		when:
+			log.info ">>>>>>>>>>>>> Dead Letter Pub Sub"
 			ActorSystem system = new ActorSystemBuilder().name("DeadLetterPubSub").build()
 			// Create a subscriber - give it time to subscribe
 			ActorRef subscriberRef = system.context.actorOf(Subscriber.props(), "subscriber")

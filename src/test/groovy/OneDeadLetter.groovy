@@ -16,6 +16,7 @@ class OneDeadLetter extends Specification {
 
 	def "Dead Letter"() {
 		when:
+			log.info ">>>>>>>>>>>>> One Dead Letter"
 			ActorSystem system = new ActorSystemBuilder().name("DeadLetter").build()
 			ActorRef ref = system.context.actorSelection('/user/notthere')
 			success = ref.isDeadLetter()

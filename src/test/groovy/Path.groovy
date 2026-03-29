@@ -57,7 +57,7 @@ class Path extends Specification {
 	 */
 	def "Actor Selection to Remote Path"() {
 		when:
-			log.info "Starting path test remotely"
+			log.info ">>>>>>>>>>> Starting path test remotely"
 			system = new ActorSystemBuilder().name("Path").port(9098).build()
 			success = false
 

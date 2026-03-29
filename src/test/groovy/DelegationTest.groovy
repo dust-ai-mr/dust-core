@@ -88,6 +88,7 @@ class DelegationTest extends Specification {
 
 	def "Delegate"() {
 		when:
+			log.info ">>>>>>>>>>>>> Delegate"
 			ActorSystem system = new ActorSystemBuilder().name("DelegateTest").build()
 			ActorRef client = system.context.actorOf(ClientActor.props(), 'client')
 

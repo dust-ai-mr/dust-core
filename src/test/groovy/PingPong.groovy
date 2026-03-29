@@ -17,7 +17,7 @@ class PingPong extends Specification {
 		when:
 			ActorSystem system = new ActorSystemBuilder().name("PingPong").build()
 
-			log.info "Sending 40,000,000 messages ..."
+			log.info ">>>>>>>>>>> Ping Ponger Sending 40,000,000 messages ..."
 			ActorRef ping2 = system.context.actorOf(PingActor.props(10000000), 'ping2')
 			ActorRef pong2 = system.context.actorOf(PingActor.props(10000000), 'pong2')
 			ActorRef ping3 = system.context.actorOf(PingActor.props(10000000), 'ping3')

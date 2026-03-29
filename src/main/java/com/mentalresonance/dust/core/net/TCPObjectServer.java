@@ -24,10 +24,12 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
+import com.mentalresonance.dust.core.msgs.DeadLetter;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.channels.ClosedByInterruptException;
@@ -145,6 +147,13 @@ public class TCPObjectServer {
                 }
                 catch (Exception e) {
                     e.printStackTrace();
+                    if (serverSocketChannel != null && !serverSocketChannel.socket().isClosed()) {
+                        try {
+                            serverSocketChannel.socket().close();
+                        } catch (IOException ioe) {
+                            log.error ("Error closing server socket: {} on port: {}", ioe.getMessage(), port);
+                        }
+                    }
                 }
 
                 workerBees.asMap().values().forEach(w -> w.getThread().interrupt());
@@ -181,7 +190,9 @@ public class TCPObjectServer {
 
     /*
      * Sit on a connection reading messages and handing them off. The connection is *the* channel for
-     * messages between a fixed pair of Actors.
+     * messages between a fixed pair of Actors. The worker bee is selected by src and target Ids so
+     * so all messages between a fixed pair of (remote) Actors get serialized through this thread
+     * thereby preserving the Dust message ordering requirement.
      */
     private class WorkerBee implements Runnable {
 
@@ -193,10 +204,8 @@ public class TCPObjectServer {
         WorkerBee(long id, TCPObjectSocket socket, int payloadSize) throws Exception {
             this.id = id;
             this.socket = socket;
-            actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
-            if (socket.isNullSender())
-                socket.send(null);
 
+            actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
         }
 
         public void run()
@@ -206,17 +215,14 @@ public class TCPObjectServer {
             while(!actorSystem.isStopped())
             {
                 try {
+                    boolean isNullSender = socket.isNullSender();
                     payloadSize = socket.readHeader();
-                    if (0 == payloadSize) { // 'null' sent which means the other end is going away ...
-                        if (socket.isNullSender()) {
-                            socket.send(null);
-                            break;
-                        }
+
+                    if (0 == payloadSize) { // 'null' sent which means the other end is going away so will we
+                        break;
                     }
                     else {
                         actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
-                        if (socket.isNullSender())
-                            socket.send(null);
                     }
                 }
                 // Naturally stopping - because of local eviction or client close socket

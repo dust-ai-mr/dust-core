@@ -70,8 +70,10 @@ class Watch extends Specification {
 	 * Notice even though we take care to cancel the Stops we still get a Dead letter which is the remaining Watch going
 	 * off.
 	 */
-	def "Suicide Pact 1"() {
+	def "Watch Test"() {
 		when:
+			log.info ">>>>>>>>>>> Watch Test"
+
 			ActorSystem system = new ActorSystemBuilder().name("WatchTest").build()
 
 			ActorRef w1 = system.context.actorOf( Watcher.props(1000), "W1")

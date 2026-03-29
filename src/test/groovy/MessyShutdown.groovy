@@ -78,8 +78,9 @@ class MessyShutdown extends Specification {
         }
     }
 
-    def "Dead Letter"() {
+    def "Messy Shutdown"() {
         when:
+            log.info ">>>>>>>>>>>>> MessyShutdown"
             ActorSystem system = new ActorSystemBuilder().name("MessyShutdown").build()
             ActorRef stopper = system.context.actorOf( Parent.props())
 

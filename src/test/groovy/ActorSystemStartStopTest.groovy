@@ -15,6 +15,7 @@ class ActorSystemStartStopTest extends Specification {
 
 	def "ActorSystemStartStop"() {
 		when:
+		log.info ">>>>>>>>>>>> ActorSystemStartStop"
 			ActorSystem system = new ActorSystemBuilder()
 				.name("StopTest")
 				.port(9099)

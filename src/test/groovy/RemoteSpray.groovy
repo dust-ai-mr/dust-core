@@ -76,6 +76,8 @@ class RemoteSpray extends Specification {
 
 	def "Remote Spray"() {
 		when:
+			log.info ">>>>>>>>>>> Remote Spray"
+
 			def clip = 3000000
 
 			long time = System.currentTimeMillis()

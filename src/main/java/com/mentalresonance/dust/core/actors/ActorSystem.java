@@ -19,10 +19,12 @@
 
 package com.mentalresonance.dust.core.actors;
 
+import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.net.TCPObjectServer;
 import com.mentalresonance.dust.core.services.PersistenceService;
 import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.system.GuardianActor;
+import com.mentalresonance.dust.core.system.SystemActor;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
 import lombok.Getter;
 import lombok.Setter;
@@ -30,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
+import java.net.BindException;
+import java.net.ServerSocket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -100,16 +104,21 @@ public class ActorSystem {
      * @throws ActorInstantiationException creating core service Actors
      */
     public ActorSystem(String host, String name, Integer port, boolean logDeadLetters, int maxOutgoingConnection, int maxIncomingConnection)
-        throws InvocationTargetException, NoSuchMethodException, InstantiationException,
+        throws InvocationTargetException, NoSuchMethodException, InstantiationException, BindException,
         IllegalAccessException, ActorInstantiationException {
 
         this.host = host;
         this.name = name;
         this.port = port;
+
         init(logDeadLetters);
+
         if (null != port) {
             try {
                 actorSystemConnectionManager = new ActorSystemConnectionManager(maxOutgoingConnection);
+                // TEst to see if it is use before leaving this thread
+                ServerSocket ss = new ServerSocket(port);
+                ss.close();
                 context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
                 haveStopped = runServer(port, actorSystemConnectionManager, this, maxIncomingConnection);
             } catch (IOException e) {
@@ -265,44 +274,50 @@ public class ActorSystem {
 
         return str.substring(index);
     }
+
+    /**
+     * Handle a remote message.
+     * @param msg
+     */
     public void connectionAccepted(SentMessage msg) {
         Object o = null;
         try {
-            try {
-                /*
-                 * path is /system/...
-                 */
-                String path = substringAtNth(msg.remotePath(), '/', 4);
-                ActorRef sender = (null != msg.sender()) ? msg.sender() : null;
-                ActorRef target = context.actorSelection(path);
+            /*
+             * path is /system/...
+             */
+            String path = substringAtNth(msg.remotePath(), '/', 4);
+            ActorRef sender = (null != msg.sender()) ? msg.sender() : null;
+            ActorRef target = context.actorSelection(path);
 
-                if (null == target) {
-                    target = context.getDeadLetterActor();
-                    target.setIsDeadLetter(true);
-                }
-                if (null != sender) {
-                    // Sender has everything but a context and connection manager to work with
-                    sender.context = context;
-                    sender.setActorSystemConnectionManager(actorSystemConnectionManager);
-                }
+            if (null == target) {
+                target = context.getDeadLetterActor();
+                target.setIsDeadLetter(true);
+            }
+            if (null != sender) {
+                // Sender has everything but a context and connection manager to work with
+                sender.context = context;
+                sender.setActorSystemConnectionManager(actorSystemConnectionManager);
+            }
 
-                Serializable message = msg.message();
+            Serializable message = msg.message();
 
-                // Likewise ActorRefs
-                if (message instanceof ActorRef) {
-                    ((ActorRef)message).context = context;
-                    ((ActorRef)message).setActorSystemConnectionManager(actorSystemConnectionManager);
-                }
+            // Likewise ActorRefs
+            if (message instanceof ActorRef) {
+                ((ActorRef)message).context = context;
+                ((ActorRef)message).setActorSystemConnectionManager(actorSystemConnectionManager);
+            }
+            if (target.isDeadLetter) {
+                // The target is a dead letter on this side ... make it a dead letter on the client side
+                DeadLetter dl = new DeadLetter(message, msg.remotePath(), sender);
+                context.actorSelection(sender.host + "/system/" + SystemActor.DEAD_LETTERS).tell(dl, sender);
+            }
+            else {
                 //log.info("Sending {} from {} to {}", message, sender, target);
                 target.tell(message, sender);
             }
-            catch (Exception e) {
-                log.error("Error in server(): {}", e.getMessage());
-            }
-
         }
         catch (Exception e) {
-            log.error("Error in outer server(): {} - {}", e.getMessage(), o);
+            log.error("Error in server(): {}", e.getMessage());
         }
     }
 

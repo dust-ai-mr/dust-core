@@ -134,8 +134,9 @@ class RemoteBigMsgTest extends Specification {
 		}
 	}
 
-	def "Shootout"() {
+	def "Remote Big Msg Test"() {
 		when:
+			log.info ">>>>>>>>>>> RemoteBigMsgTest"
 			ActorSystem me = new ActorSystemBuilder()
 				.name("me")
 				.port(9098)

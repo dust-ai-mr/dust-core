@@ -27,6 +27,7 @@ import spock.lang.Specification
 	Create an Actor which flips to some stashing behavior, flips back and confirms it can unstash
 	and process its 'missed' messages
  */
+@Slf4j
 class StashTest extends Specification {
 
 	public static success = false, gotmsg = false, got10 = false
@@ -87,6 +88,8 @@ class StashTest extends Specification {
 
 	def "Stash"() {
 		when:
+			log.info ">>>>>>>>>>> Stash"
+
 			ActorSystem system = new ActorSystemBuilder().name("Stash").build()
 			ActorRef stasher = system.context.actorOf( Stasher.props())
 			// Change behavior to stashing message ..

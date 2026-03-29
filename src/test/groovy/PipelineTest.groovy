@@ -15,6 +15,7 @@ import spock.lang.Specification
  * after the final stage processes it.
  */
 @CompileStatic
+@Slf4j
 class PipelineTest extends Specification {
 
 	@Slf4j
@@ -56,6 +57,7 @@ class PipelineTest extends Specification {
 	def "Pipeline"() {
 
 		when:
+			log.info ">>>>>>>>>>> Pipeline"
 			ActorSystem system = new ActorSystemBuilder().name("Test").build()
 			Add1Msg msg = new Add1Msg()
 			List<Props> props = []

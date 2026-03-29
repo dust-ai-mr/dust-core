@@ -33,6 +33,7 @@ class GetSystemActors extends Specification {
 
 	def "Get System Actors"() {
 		when:
+			log.info ">>>>>>>>>>>>> Get System Actors"
 			ActorSystem system = new ActorSystemBuilder().name("Get System Actors").build()
 			success = system.context.getDeadLetterActor() && system.context.getUserActor()
 			system.stop()

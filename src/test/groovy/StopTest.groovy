@@ -37,6 +37,7 @@ class StopTest extends Specification {
 
 	def "Stop"() {
 		when:
+			log.info ">>>>>>>>>>> StopTest"
 			ActorSystem system = new ActorSystemBuilder().name("StopTest").build()
 			log.info "Starting ...."
 			system.context.actorOf(StopActor.props(), 'test').waitForDeath();

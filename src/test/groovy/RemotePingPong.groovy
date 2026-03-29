@@ -71,6 +71,7 @@ class RemotePingPong extends Specification {
 	}
 	def "Remote Ping Ponger"() {
 		when:
+			log.info ">>>>>>>>>>> Remote Ping Ponger"
 			me.context.actorOf(Runner.props()).waitForDeath()
 			me.stop()
 			system1.stop()

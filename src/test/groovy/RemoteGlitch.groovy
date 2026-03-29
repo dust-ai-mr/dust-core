@@ -79,9 +79,13 @@ class RemoteGlitch extends Specification {
 
 					case NextMsg:
 						log.info "Restarting Pinger 2"
-						sys2 = new ActorSystemBuilder().name("sys2").port(9092).build()
-						ping2Ref = sys2.context.actorOf( Pinger.props(50), "p2")
-						ping2Ref.tell(new StartMsg(--count), self)
+						try {
+							sys2 = new ActorSystemBuilder().name("sys2").port(9092).build()
+							ping2Ref = sys2.context.actorOf( Pinger.props(50), "p2")
+							ping2Ref.tell(new StartMsg(--count), self)
+						} catch (Exception e) {
+							log.error "Cannot restart on port 9092: ${e.message}"
+						}
 						break
 
 					default:
@@ -109,8 +113,7 @@ class RemoteGlitch extends Specification {
 			(Serializable message) -> {
 				switch(message) {
 					case Terminated:
-						if (sender == ping1Ref)
-							stopSelf()
+						stopSelf()
 					break
 				}
 			}
@@ -119,11 +122,17 @@ class RemoteGlitch extends Specification {
 
 	def "Remote Glitch"() {
 		when:
+			log.info ">>>>>>>>>>> Remote Glitch"
 			me = new ActorSystemBuilder().name("Me").port(9090).build()
 			sys1 = new ActorSystemBuilder().name("sys1").port(9091).build()
 			sys2 = new ActorSystemBuilder().name("sys2").port(9092).build()
 
 			me.context.actorOf(Runner.props()).waitForDeath()
+
+			me.stop()
+			sys1.stop()
+			sys2.stop()
+			Thread.sleep(1000) // Issues with recovery in running all tests at once
 		/**
 		 * Ping2 will stop before Ping one -- ping 1 should start retrying
 		 */

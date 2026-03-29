@@ -58,6 +58,7 @@ class FuturePingPong extends Specification {
 
 	def "Future Ping Pong"() {
 		when:
+			log.info ">>>>>>>>>>>>> Future Ping Pong"
 			ActorSystem system = new ActorSystemBuilder().name("FuturePingPong").build()
 			log.info "Starting PingPong"
 			system.context.actorOf(FuturePingActor.props(5000000), 'ping')

@@ -147,6 +147,7 @@ class ServiceActorTest extends Specification {
 
 	def "ServiceActor Test"() {
 		when:
+			log.info ">>>>>>>>>>> ServiceActor Test"
 			ActorSystem system = new ActorSystemBuilder().name("ServiceActorTest").build()
 			log.info "Starting Squares"
 			system.context.actorOf( SquareTestActor.props(1000000), "squares").waitForDeath()

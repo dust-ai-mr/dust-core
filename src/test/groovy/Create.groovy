@@ -23,6 +23,7 @@ class Create extends Specification {
 
 	def "Multiple Creation"() {
 		when:
+			log.info ">>>>>>>>>>>>> Multiple Creation"
 			system = new ActorSystemBuilder().name("Create").build()
 			context = system.context
 

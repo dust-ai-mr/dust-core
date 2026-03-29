@@ -60,6 +60,7 @@ class DeadMansHandleCancelTest extends Specification {
 
 	def "DeadMansHandleCancel" () {
 		when:
+			log.info ">>>>>>>>>>>>> DeadMansHandleCancel"
 			ActorSystem system = new ActorSystemBuilder().name("DeadMansHandleCancel").build()
 			system.context.actorOf(DeadMansHandleTestActor.props(), 'test').waitForDeath()
 			system.stop()

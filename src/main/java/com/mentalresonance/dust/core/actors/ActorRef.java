@@ -258,10 +258,6 @@ public class ActorRef implements Serializable {
             try {
                 socket = actorSystemConnectionManager.getSocket(sender, senderId, targetId, uri);
                 socket.send(sentMessage);
-                // If no sender then we have to serialize messages using an 'Ack' from the server
-                // This ACK is a 0 payload size message so only need to read the header
-                if (null == sender)
-                    socket.readHeader();
                 return;
             }
             catch (InterruptedException | ClosedByInterruptException ie) {

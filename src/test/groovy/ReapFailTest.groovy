@@ -148,8 +148,9 @@ class ReapFailTest extends Specification {
 		}
 	}
 
-	def "Reap"() {
+	def "ReapFailText"() {
 		when:
+			log.info ">>>>>>>>>>> ReapFailText"
 			ActorSystem system = new ActorSystemBuilder().name("ReapTest").build()
 			system.context.actorOf(ParentActor.props(), 'parent')
 			system.context.actorOf(ClientActor.props(), 'client').waitForDeath();

@@ -109,6 +109,7 @@ class ConnectionBasher extends Specification {
 
 	def "Connection Basher"() {
 		when:
+			log.info ">>>>>>>>>>>>> Connection Basher"
 			def clip = 512
 			log.info "Starting"
 			sys1.context.actorOf(Runner.props(clip)).waitForDeath()

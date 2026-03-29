@@ -108,6 +108,8 @@ class ShootOut extends Specification {
 
 	def "Shootout"() {
 		when:
+			log.info ">>>>>>>>>>> Shootout"
+
 			def clip = 1000000
 			ActorRef a1Ref = me.context.actorOf( Shooter.props(clip), "s1")
 			ActorRef a2Ref = me.context.actorOf( Shooter.props(clip), "s2")
