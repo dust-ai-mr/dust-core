@@ -54,6 +54,7 @@ public class ForyService {
         LoggerFactory.setLogLevel(LogLevel.ERROR_LEVEL);
         Fory fory = Fory.builder().withLanguage(Language.JAVA)
             .requireClassRegistration(false)
+            .withRefTracking(true)
             .build();
 
 

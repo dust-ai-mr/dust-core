@@ -65,7 +65,7 @@ public class ActorSystemConnectionManager {
                     log.error("Error removing socket: {}", e.getMessage());
                 }
 
-                freeSockets.add(socket);
+                freeSockets.offer(socket);
             })
             .build();
 
@@ -83,6 +83,7 @@ public class ActorSystemConnectionManager {
             try {
                 if(connections.asMap().containsKey(key))
                     log.trace("Reusing cached socket for {} -> {}", sender, uri);
+
                 TCPObjectSocket sock =  connections.get(key, (id) -> {
                     TCPObjectSocket socket = freeSockets.poll();
                     if (null != socket) {
@@ -93,26 +94,32 @@ public class ActorSystemConnectionManager {
                             socket.setTargetId(targetId);
                         }
                         catch (IOException e) {
-                            log.trace("Error connecting to socket {}: {}", socket, e.getMessage());
+                            try { socket.close(); } catch (Exception ignored) {}
+                            freeSockets.offer(socket);
                             throw new RuntimeException(e);
                         }
                     }
                     return socket;
                 });
+
                 if (null == sock) {
                     log.trace("No free sockets");
                     /*
-                       No free sockets so walk connections to see if any related socket warps a closed channel
+                       No free sockets so walk connections to see if any related socket wraps a closed channel
                        Return them and try again
                      */
                     AtomicBoolean done = new AtomicBoolean(false);
                     connections.asMap().forEach((k, v) -> {
                         if (v.isClosed()) {
                             connections.invalidate(k);
-                            log.info("Found closed socket for {} .. returning", k);
+                            connections.cleanUp(); // Make sure evictions are done
+                            log.trace("Found closed socket for {} .. returning", k);
                             done.set(true);
                         }
                     });
+                    /*
+                        No luck - so manually evict the oldest and try again
+                     */
                     if (!done.get()) {
                         connections.policy().eviction().ifPresent(policy -> {
                             // The first element in the iterator is the "coldest" (LRU)
@@ -120,7 +127,9 @@ public class ActorSystemConnectionManager {
                             var oldestEntry = policy.coldest(1).entrySet().iterator().next();
 
                             if (oldestEntry != null) {
+                                log.trace("Found socket to return: {}", oldestEntry.getKey());
                                 connections.invalidate(oldestEntry.getKey());
+                                connections.cleanUp(); // Make sure evictions are done
                             } else {
                                 log.error("No sockets to return");
                             }

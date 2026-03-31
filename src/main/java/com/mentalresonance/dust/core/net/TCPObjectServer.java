@@ -82,8 +82,6 @@ public class TCPObjectServer {
         for (int i = 0; i < maxIncomingConnections+1; ++i) {
             workerSockets.add(new TCPObjectSocket());
         }
-
-
     }
 
     /**
@@ -93,6 +91,9 @@ public class TCPObjectServer {
      * @throws IOException on errors
      */
     public void start(ActorSystem actorSystem) throws IOException {
+
+        WorkerBee DUMMY_WB = new WorkerBee();
+
         serverThread = Thread.ofVirtual().start(
             () ->  {
                 ServerSocketChannel serverSocketChannel = null;
@@ -126,13 +127,18 @@ public class TCPObjectServer {
                             WorkerBee workerBee;
                             try {
                                 workerBee = new WorkerBee(k, socket, payloadSize);
+                                Thread wbThread = Thread.startVirtualThread(workerBee);
+                                workerBee.setThread(wbThread);
+                                return workerBee;
                             } catch (Exception e) {
-                                throw new RuntimeException(e);
+                                log.error("Error creating worker bee for {}: {}", id, e.getMessage());
+                                return DUMMY_WB;
                             }
-                            Thread wbThread = Thread.startVirtualThread(workerBee);
-                            workerBee.setThread(wbThread);
-                            return workerBee;
+
                         });
+                        if (wb == DUMMY_WB) {
+                            workerBees.invalidate(id);
+                        }
                     }
                 }
                 catch (ClosedByInterruptException ignored) {  // How we stop
@@ -156,7 +162,11 @@ public class TCPObjectServer {
                     }
                 }
 
-                workerBees.asMap().values().forEach(w -> w.getThread().interrupt());
+                workerBees.asMap().values().forEach(w -> {
+                    if (w != null) {
+                        w.getThread().interrupt();
+                    }
+                });
                 workerSockets.clear();
 
                 log.info("Remoting Server stopped on socket: {}", serverSocketChannel.socket());
@@ -201,11 +211,17 @@ public class TCPObjectServer {
         TCPObjectSocket socket;
         long id;
 
+        WorkerBee() { } // For dummy
+
         WorkerBee(long id, TCPObjectSocket socket, int payloadSize) throws Exception {
             this.id = id;
             this.socket = socket;
-
-            actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
+            try {
+                actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
+            } catch (Exception e) {
+                log.error("WorkerBee {}: {}", id, e.getMessage());
+                throw e;
+            }
         }
 
         public void run()
