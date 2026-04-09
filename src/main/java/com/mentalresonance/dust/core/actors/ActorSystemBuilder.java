@@ -19,6 +19,7 @@
 
 package com.mentalresonance.dust.core.actors;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.BindException;
 
@@ -103,8 +104,7 @@ public class ActorSystemBuilder {
      * @throws IllegalAccessException
      */
     public ActorSystem build() throws
-            InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, BindException
-    {
+        InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
         assert(null != name);
         return new ActorSystem(
             host,

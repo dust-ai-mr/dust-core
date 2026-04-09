@@ -373,7 +373,8 @@ public class Actor implements Runnable {
                 Serializable sentMsg = sentMessage.message();
 
                 if (null == sentMsg) {
-                    log.warn("%s sent null message to %s. Ignored".formatted(sender.toString(), self.path));
+                    String sentBy = null != sender ? sender.toString() : "Unknown";
+                    log.warn("{} sent null message to {}. Ignored", sentBy, self.path);
                 }
                 else {
                     if (stopping && ! (sentMsg instanceof _Stopped)) {

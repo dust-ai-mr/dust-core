@@ -104,7 +104,7 @@ public class ActorSystem {
      * @throws ActorInstantiationException creating core service Actors
      */
     public ActorSystem(String host, String name, Integer port, boolean logDeadLetters, int maxOutgoingConnection, int maxIncomingConnection)
-        throws InvocationTargetException, NoSuchMethodException, InstantiationException, BindException,
+        throws InvocationTargetException, NoSuchMethodException, InstantiationException, IOException,
         IllegalAccessException, ActorInstantiationException {
 
         this.host = host;
@@ -122,7 +122,8 @@ public class ActorSystem {
                 context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
                 haveStopped = runServer(port, actorSystemConnectionManager, this, maxIncomingConnection);
             } catch (IOException e) {
-                log.error(String.format("Cannot start server on host %s port %d", host, port));
+                log.error(String.format("Cannot start server on host %s port %d [%s]", host, port, e.getMessage()));
+                throw e;
             }
         }
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
