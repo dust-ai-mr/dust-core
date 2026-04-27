@@ -24,6 +24,7 @@ import com.mentalresonance.dust.core.actors.PoisonPill;
 import com.mentalresonance.dust.core.actors.SentMessage;
 import com.mentalresonance.dust.core.msgs.*;
 import org.apache.fory.Fory;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.logging.LogLevel;
@@ -55,6 +56,9 @@ public class ForyService {
         Fory fory = Fory.builder().withLanguage(Language.JAVA)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withClassVersionCheck(true)
+            // .withCodegen(false)
             .build();
 
 

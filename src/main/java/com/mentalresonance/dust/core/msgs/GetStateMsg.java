@@ -27,11 +27,14 @@ import java.io.Serializable;
 /**
  * A convenience message for those Actors which have State that may need to be passed around.
  * This is generally frowned upon if the state isn't cloned first - or you trust your clients ...
- * @param <S>
+ * @param <S> State type
+ * @param <M> Arbitrary message that may determine extent of state returned
  */
 @Getter
 @Setter
-public class GetStateMsg<S> implements Serializable {
+public class GetStateMsg<S, M> implements Serializable {
 
     S state;
+    M message = null;
+
 }

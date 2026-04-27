@@ -410,11 +410,12 @@ public class ActorRef implements Serializable {
     public boolean equals(Object o) {
         if (mailBox != null)
             return super.equals(o);
-        else {
+        else
+        {
             if (!(o instanceof ActorRef))
                 return false;
             else
-                return remotify().path.equals(((ActorRef)o).remotify().path);
+                return path.equals(((ActorRef)o).path);
         }
     }
 

@@ -35,6 +35,7 @@ import java.net.StandardSocketOptions;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -61,10 +62,11 @@ public class TCPObjectServer {
      * @param haveStopped completed when stopped
      */
     public TCPObjectServer(
-            int port,
-            ActorSystem actorSystem,
-            CompletableFuture<Boolean> haveStopped,
-            int maxIncomingConnections) {
+        int port,
+        ActorSystem actorSystem,
+        CompletableFuture<Boolean> haveStopped,
+        int maxIncomingConnections,
+        List<Class<?>> registeredClasses) {
         this.port = port;
         this.haveStopped = haveStopped;
         this.actorSystem = actorSystem;
@@ -80,7 +82,7 @@ public class TCPObjectServer {
             })
             .build();
         for (int i = 0; i < maxIncomingConnections+1; ++i) {
-            workerSockets.add(new TCPObjectSocket());
+            workerSockets.add(new TCPObjectSocket(registeredClasses));
         }
     }
 

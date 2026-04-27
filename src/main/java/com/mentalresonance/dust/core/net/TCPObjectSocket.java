@@ -14,6 +14,7 @@ import java.net.StandardSocketOptions;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.List;
 
 @Slf4j
 public class TCPObjectSocket {
@@ -41,14 +42,14 @@ public class TCPObjectSocket {
         return (((long) srcId) << 32) | (targetId & 0xFFFFFFFFL);
     }
 
-    public TCPObjectSocket() {
-        this.fory = ForyService.fory();
+    public TCPObjectSocket(List<Class<?>> registeredClasses) {
+        this.fory = ForyService.fory(registeredClasses);
         this.buffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY);
         this.mem = MemoryUtils.wrap(buffer);
     }
 
-    public TCPObjectSocket(SocketChannel ch) {
-        this();
+    public TCPObjectSocket(List<Class<?>> registeredClasses, SocketChannel ch) {
+        this(registeredClasses);
         wrap(ch);
     }
 

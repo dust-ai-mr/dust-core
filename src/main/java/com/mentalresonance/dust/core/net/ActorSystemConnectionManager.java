@@ -25,9 +25,11 @@ import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
+import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.channels.SocketChannel;
+import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -40,14 +42,10 @@ public class ActorSystemConnectionManager {
 
     LinkedBlockingQueue<TCPObjectSocket> freeSockets = new LinkedBlockingQueue<>();;
     Cache<Long, TCPObjectSocket> connections;
-
-    public ActorSystemConnectionManager() {
-        this(64);
-    }
     /**
      * Prepare TCPObject sockets since building serializers is expensive
      */
-    public ActorSystemConnectionManager(int size) {
+    public ActorSystemConnectionManager(int size, List<Class<?>> registeredClasses) {
 
         connections = Caffeine
             .newBuilder()
@@ -70,7 +68,7 @@ public class ActorSystemConnectionManager {
             .build();
 
         for (int i = 0; i < size; ++i) {
-            freeSockets.add(new TCPObjectSocket());
+            freeSockets.add(new TCPObjectSocket(registeredClasses));
         }
     }
 

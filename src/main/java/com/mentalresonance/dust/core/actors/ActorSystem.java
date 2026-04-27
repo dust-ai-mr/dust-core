@@ -32,8 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
-import java.net.BindException;
 import java.net.ServerSocket;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -58,6 +58,8 @@ public class ActorSystem {
 
     @Getter
     ActorContext context;
+
+    List<Class<?>> registeredClasses;
 
     private ActorRef guardianRef;
 
@@ -103,7 +105,8 @@ public class ActorSystem {
      * @throws IllegalAccessException creating core service Actors
      * @throws ActorInstantiationException creating core service Actors
      */
-    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters, int maxOutgoingConnection, int maxIncomingConnection)
+    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters,
+                       int maxOutgoingConnection, int maxIncomingConnection, List<Class<?>> registeredClasses)
         throws InvocationTargetException, NoSuchMethodException, InstantiationException, IOException,
         IllegalAccessException, ActorInstantiationException {
 
@@ -115,7 +118,8 @@ public class ActorSystem {
 
         if (null != port) {
             try {
-                actorSystemConnectionManager = new ActorSystemConnectionManager(maxOutgoingConnection);
+                this.registeredClasses = registeredClasses;
+                actorSystemConnectionManager = new ActorSystemConnectionManager(maxOutgoingConnection, registeredClasses);
                 // TEst to see if it is use before leaving this thread
                 ServerSocket ss = new ServerSocket(port);
                 ss.close();
@@ -256,7 +260,8 @@ public class ActorSystem {
             port,
             this,
             haveStopped,
-            maxIncomingConnections
+            maxIncomingConnections,
+            registeredClasses
         );
 
         this.port = port;
@@ -297,6 +302,7 @@ public class ActorSystem {
             if (null != sender) {
                 // Sender has everything but a context and connection manager to work with
                 sender.context = context;
+                assert(actorSystemConnectionManager != null);
                 sender.setActorSystemConnectionManager(actorSystemConnectionManager);
             }
 

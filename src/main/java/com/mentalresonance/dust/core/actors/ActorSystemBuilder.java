@@ -20,8 +20,10 @@
 package com.mentalresonance.dust.core.actors;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.net.BindException;
+import java.util.List;
 
 /**
  * Build for an ActorSystem
@@ -33,6 +35,7 @@ public class ActorSystemBuilder {
     Integer maxIncomingConnections = 16;
     Integer maxOutgoingConnections = 16;
     boolean logDeadLetters = true;
+    List<Class<?>> registeredClasses = List.of();
 
     public ActorSystemBuilder() {}
 
@@ -95,6 +98,11 @@ public class ActorSystemBuilder {
         return this;
     }
 
+    public ActorSystemBuilder registeredClasses(List<Class<?>> registeredClasses) {
+        this.registeredClasses = registeredClasses;
+        return this;
+    }
+
     /**
      * Build the ActorSystem
      * @return this
@@ -112,7 +120,8 @@ public class ActorSystemBuilder {
             port,
             logDeadLetters,
             maxOutgoingConnections,
-            maxIncomingConnections
+            maxIncomingConnections,
+            registeredClasses
         );
     }
 }
