@@ -37,4 +37,11 @@ public class GetStateMsg<S, M> implements Serializable {
     S state;
     M message = null;
 
+    public GetStateMsg() {
+    }
+
+    public GetStateMsg(M message) {
+        this.message = message;
+    }
+
 }

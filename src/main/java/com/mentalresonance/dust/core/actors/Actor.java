@@ -248,6 +248,13 @@ public class Actor implements Runnable {
     protected Collection<ActorRef> getChildren() {
         return children.values();
     }
+
+    /**
+     * Get child with given name of this Actor
+     * @param name of child
+     * @return ActorRef of child if exists or null
+     */
+    protected ActorRef child(String name) { return children.get(name); }
     /**
      * Get the current number of messages waiting in the mailbox
      *
@@ -686,9 +693,29 @@ public class Actor implements Runnable {
      * @param newBehavior the new behavior to follow
      */
     public void stashBecome(ActorBehavior newBehavior) {
-        log.info("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
         behaviors.push(this.behavior);
         become(newBehavior);
+    }
+
+    /**
+     * Pops last stashed behavior and makes it current behavior
+     * @param unstash if true unstash all messages in stash after unBecoming
+     * @return Stashed behavior
+     * @throws Exception if stash is empty
+     */
+    public ActorBehavior unBecome(boolean unstash) throws Exception {
+        ActorBehavior behavior;
+
+        if (! behaviors.isEmpty()) {
+            behavior = behaviors.pop();
+            log.trace("Popping behavior = %s".formatted(behavior));
+            become(behavior);
+            if (unstash)
+                unstashAll();
+        } else
+            throw new Exception("Empty behavior queue on unBecome");
+        return behavior;
     }
 
     /**
@@ -696,17 +723,7 @@ public class Actor implements Runnable {
      * @return Stashed behavior
      * @throws Exception if stash is empty
      */
-    public ActorBehavior unBecome() throws Exception {
-        ActorBehavior behavior;
-
-        if (! behaviors.isEmpty()) {
-            behavior = behaviors.pop();
-            // log.trace("Popping behavior = %s".formatted(behavior));
-            become(behavior);
-        } else
-            throw new Exception("Empty behavior queue on unBecome");
-        return behavior;
-    }
+    public ActorBehavior unBecome() throws Exception { return unBecome(false); }
 
     /**
      * Delegate all messages, except instances of NonDelegatedMsg, to the target Actor.
@@ -862,7 +879,7 @@ public class Actor implements Runnable {
             ActorRef exists;
             assert name != null: "Child of " + self.path + " given null name!";
             if (null != (exists = children.get(name))) {
-                log.warn("Child %s of %s already exists !!".formatted(name, self.path));
+                log.warn("Child %s of %s already exists [actorOf] !!".formatted(name, self.path));
                 return exists;
             }
             Actor actor = createInstanceWithParameters(props.actorClass, props.actorArgs);

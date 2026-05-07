@@ -20,6 +20,7 @@
 package com.mentalresonance.dust.core.actors;
 
 import lombok.Getter;
+import lombok.Setter;
 
 import java.io.Serializable;
 
@@ -34,14 +35,16 @@ public class Props implements Serializable {
      * Class the Actor will be an instance of
      */
     @Getter
-    final
     Class<? extends Actor> actorClass;
 
     /**
      * Arguments to be passed to Actor Constructor
      */
-    final Object[] actorArgs;
+    @Getter
+    @Setter
+    Object[] actorArgs;
 
+    public Props() { }
     /**
      * Constructor for  Props for Actor creation
      * @param clz class of Actor to produce
