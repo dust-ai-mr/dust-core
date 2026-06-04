@@ -927,6 +927,33 @@ public class Actor implements Runnable {
         return null;
     }
 
+    /**
+     * Convenience - only tell target if it is not null
+     * @param target the recipient
+     * @param msg the message
+     * @param sender the sender
+     */
+    protected void tellIf(ActorRef target, Serializable msg, ActorRef sender) {
+        if (null != target) target.tell(msg, sender);
+    }
+
+    /**
+     * Convenience - only tell target (from me) if it is not null
+     * @param target the recipient
+     * @param msg the message
+     */
+    protected void tellIf(ActorRef target, Serializable msg) {
+        if (null != target) target.tell(msg, self);
+    }
+
+    /**
+     * Convenience - only tell sender (from me) if it is not null
+     * @param msg the message
+     */
+    protected void replyIf(Serializable msg) {
+        tellIf(sender, msg, self);
+    }
+
     Actor createInstanceWithParameters(Class<?> actorClass, Object[] args) throws Exception {
         ArrayList<Class<?>> classList = new ArrayList<>();
         classList.add(actorClass);

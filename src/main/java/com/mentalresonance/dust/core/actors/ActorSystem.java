@@ -287,6 +287,8 @@ public class ActorSystem {
      */
     public void connectionAccepted(SentMessage msg) {
         Object o = null;
+
+        if (null == msg) return;
         try {
             /*
              * path is /system/...
