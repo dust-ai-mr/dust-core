@@ -113,6 +113,11 @@ public class Actor implements Runnable {
     private Cancellable deadMansHandle = null;
 
     /**
+     * See becomeAndTell()
+     */
+    private SentMessage pushedMessage = null;
+
+    /**
      * While running is true I process messages
      * Stopping flag indicates I am in the shutdown procedure
      */
@@ -344,7 +349,13 @@ public class Actor implements Runnable {
         while (running)
         {
             try {
-                sentMessage = getSentMessage();
+                if (null == pushedMessage) {
+                    sentMessage = getSentMessage();
+                }
+                else {
+                    sentMessage = pushedMessage;
+                    pushedMessage = null;
+                }
             }
             /*
              * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
@@ -369,6 +380,11 @@ public class Actor implements Runnable {
                     self.lifecycle = ActorRef.LC_STOP;
                     startStopping();
                 }
+                continue;
+            }
+            catch (IllegalStateException e) { // Mailbox queue is null - this should never happen.
+                log.error(e.getMessage());
+                running = false;
                 continue;
             }
 
@@ -631,6 +647,7 @@ public class Actor implements Runnable {
             MpscLinkedQueue<SentMessage> queue = self.mailBox.queue;
             if (null == queue) {
                 log.error("{} Q is null", self.path);
+                throw new IllegalStateException("Mailbox queue is null");
             }
             if (useStash) {
                 useStash = null != (sentMessage = stashBuffer.pollFirst());
@@ -696,6 +713,35 @@ public class Actor implements Runnable {
         log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
         behaviors.push(this.behavior);
         become(newBehavior);
+    }
+
+    /**
+     * Replace current behaviour with specified one *and* put message at front of the queue.
+     * This is useful for the idiom of "let a clas mf messages be handles by a different behavior,
+     * so become() and then send the message to yourself". This works *but* there is always a chance that
+     * other messages crept into the queue while you are processing the become and telling yourself. This means
+     * the come()'d behavior needs to check the message and stash them until the correct message comes
+     * along.
+     * <br>
+     * Again this is quite doable but means you can't rely on one-and-done to unbecome(), so it adds
+     * some annoying bookkeeping.
+     * @param behavior new behavior
+     * @param message  message to send myself when I become
+     */
+    public void becomeAndTell(ActorBehavior behavior, Serializable message) {
+        pushedMessage = new SentMessage(message, sender);
+        this.behavior = behavior;
+    }
+
+    /**
+     * Stashes current behavior and replaces it with newBehavior
+     * @param newBehavior the new behavior to follow
+     * @param message  message to send myself when I become       *
+     */
+    public void stashBecomeAndTell(ActorBehavior newBehavior, Serializable message) {
+        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        behaviors.push(this.behavior);
+        becomeAndTell(newBehavior, message);
     }
 
     /**

@@ -89,7 +89,7 @@ public class TCPObjectServer {
     /**
      * Start server - accept an incoming connection and wrap its channel with a TCPObjectSocket
      * Get the ID of that ObjectSocket - which identifies the unique pair of ActorRefs at either end
-     * of the conversation. Dispatch it of to the appropriate worker bee.
+     * of the conversation. Dispatch it off to the appropriate worker bee.
      * @throws IOException on errors
      */
     public void start(ActorSystem actorSystem) throws IOException {
@@ -103,6 +103,7 @@ public class TCPObjectServer {
                     serverSocketChannel = ServerSocketChannel.open();
                     serverSocketChannel.bind(new InetSocketAddress(port));
                     log.info ("Remoting Server started on socket {}", serverSocketChannel.socket());
+
                     while (true)
                     {
                         log.trace("{} Waiting for connection", this);
@@ -134,6 +135,7 @@ public class TCPObjectServer {
                                 return workerBee;
                             } catch (Exception e) {
                                 log.error("Error creating worker bee for {}: {}", id, e.getMessage());
+                                returnSocket(socket);
                                 return DUMMY_WB;
                             }
 
@@ -221,7 +223,7 @@ public class TCPObjectServer {
             try {
                 actorSystem.connectionAccepted((SentMessage) socket.receivePayload(payloadSize));
             } catch (Exception e) {
-                log.error("WorkerBee {}: {}", id, e.getMessage());
+                log.error("WorkerBee error in construction {}: {}", id, e.getMessage());
                 throw e;
             }
         }
@@ -248,7 +250,7 @@ public class TCPObjectServer {
                     break;
                 }
                 catch (Exception e) {
-                    log.error("WorkerBee {}: {}", id, e.getMessage());
+                    log.error("WorkerBee error in run {}: {}", id, e.getMessage());
                     break;
                 }
             }

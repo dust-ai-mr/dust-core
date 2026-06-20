@@ -181,7 +181,7 @@ public class ActorRef implements Serializable {
     public boolean tell(Serializable message, ActorRef sender) {
         boolean success = true;
 
-        // log.info("{} delivery of {} to {} mailbox from {}", (mailBox != null) ? "Local":"Remote", message, this, sender);
+        log.trace("{} delivery of {} to {} mailbox from {}", (mailBox != null) ? "Local":"Remote", message, this, sender);
 
         try {
             SentMessage sentMessage;
