@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Messages directed to non-existent Actors get delivered here instead. The message is logged.
@@ -46,26 +47,34 @@ public class DeadLetterActor extends PubSubActor {
 
     final boolean logDeadLetters;
 
+    CompletableFuture<Void> initFuture;
+
     /**
      * Create Props
      * @param logDeadLetters if true log dead letters
+     * @param initFuture     future that completes when the DeadLetterActor is ready to receive messages
+     *                       this avoid race conditions if ActrSelection is called before the DeadLetterActor is ready -
+     *                       uncommon but can occur in tests
      * @return Props
      */
-    public static Props props(Boolean logDeadLetters) {
-        return Props.create(DeadLetterActor.class, logDeadLetters);
+    public static Props props(Boolean logDeadLetters, CompletableFuture<Void> initFuture) {
+        return Props.create(DeadLetterActor.class, logDeadLetters, initFuture);
     }
 
     /**
      * Constructor
      * @param logDeadLetters if true log dead letters
      */
-    public DeadLetterActor(Boolean logDeadLetters) {
+    public DeadLetterActor(Boolean logDeadLetters, CompletableFuture<Void> initFuture) {
         this.logDeadLetters = logDeadLetters;
+        this.initFuture = initFuture;
     }
 
     @Override
     protected void preStart() {
+
         parentBehavior = super.createBehavior();
+        initFuture.complete(null);
     }
 
     @Override

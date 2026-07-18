@@ -48,11 +48,6 @@ public class GuardianActor extends Actor {
     public void init(boolean logDeadLetters) throws ActorInstantiationException {
         supervisor = new SupervisionStrategy(SupervisionStrategy.SS_RESTART, SupervisionStrategy.MODE_ONE_FOR_ONE);
         actorOf(SystemActor.props(logDeadLetters), "system");
-        try {
-            Thread.sleep(250L); // Avoid very small chance DeadLetterActor is not up and we recurse on getting it
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
         actorOf(UserActor.props(), "user");
     }
 

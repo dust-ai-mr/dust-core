@@ -21,11 +21,11 @@ package com.mentalresonance.dust.core.actors;
 
 import com.mentalresonance.dust.core.msgs.*;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
+import com.mentalresonance.dust.core.system.exceptions.ActorSelectionException;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jctools.queues.MpscLinkedQueue;
-import org.jctools.queues.MpscUnboundedArrayQueue;
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.util.*;
@@ -733,15 +733,26 @@ public class Actor implements Runnable {
         this.behavior = behavior;
     }
 
+    public void becomeAndTell(ActorBehavior behavior, Serializable message, ActorRef fromRef) {
+        pushedMessage = new SentMessage(message, fromRef);
+        this.behavior = behavior;
+    }
+
     /**
      * Stashes current behavior and replaces it with newBehavior
      * @param newBehavior the new behavior to follow
-     * @param message  message to send myself when I become       *
+     * @param message  message to send myself when I become
      */
     public void stashBecomeAndTell(ActorBehavior newBehavior, Serializable message) {
         log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
         behaviors.push(this.behavior);
         becomeAndTell(newBehavior, message);
+    }
+
+    public void stashBecomeAndTell(ActorBehavior newBehavior, Serializable message, ActorRef fromRef) {
+        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        behaviors.push(this.behavior);
+        becomeAndTell(newBehavior, message, fromRef);
     }
 
     /**
@@ -1136,6 +1147,20 @@ public class Actor implements Runnable {
     }
 
     /**
+     * Does the Actor at path actually exists. Note that actorSelection always returns an
+     * ActorSelection whether or not a 'real' Actor exists at the endpoint. If no Actor was found
+     * then ActorSelection refers to the Deadletter Actor, and so we check for this
+     */
+
+    protected boolean actorExists(String path) throws ActorSelectionException, InterruptedException {
+        return ! actorSelection(path).getRef().isDeadLetter;
+    }
+
+    protected boolean childExists(String name) {
+        return children.get(name) != null;
+    }
+
+    /**
      * Restart the Actor at ref. We create a new instance of the Actor
      * and patch up its context and patch up its old Ref.
      *
@@ -1185,8 +1210,18 @@ public class Actor implements Runnable {
 
     /**
      * Time saver for stopSelf()
+     * Note this interrupts the mailbox thread so it is really a crashout
      */
     protected void stopSelf() { context.stop(self); }
+
+    /**
+     * This is a more careful stop .. it sends itself a PoisonPill
+     * but ensures it will be next Message the Actor gets after processing
+     * whatever invoked this method
+     */
+    protected void carefulStopSelf() {
+        pushedMessage = new SentMessage(new PoisonPill(), null);
+    }
 
     /**
      * We wrap the message Q which ActorRef's have references to. So when we stop an Actor we simply replace the

@@ -50,12 +50,6 @@ public class ActorSelection implements Serializable {
     boolean remote = false;
 
     /**
-     * Actor known to be dead ?
-     */
-    @Setter
-    boolean dead = false;
-
-    /**
      * ActorRef for this selection
      */
     ActorRef target = null;
@@ -79,10 +73,7 @@ public class ActorSelection implements Serializable {
      * @throws InterruptedException if target is interrupted
      */
     public void tell(Serializable msg, ActorRef sender) throws ActorSelectionException, InterruptedException {
-        if (dead) {
-            context.deadletterActor.tell(new DeadLetter(msg, path, sender), sender);
-        }
-        else if (remote) {
+        if (remote) {
             getRef().tell(msg, sender);
         }
         else if (! path.endsWith("*")) {

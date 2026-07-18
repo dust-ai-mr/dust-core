@@ -24,6 +24,7 @@ import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.actors.SupervisionStrategy;
 import com.mentalresonance.dust.core.actors.lib.PubSubActor;
 import lombok.extern.slf4j.Slf4j;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Managers deadletters and events Actors
@@ -68,8 +69,11 @@ public class SystemActor extends Actor {
 
     @Override
     public void preStart() throws Exception {
+        CompletableFuture<Void> initFuture = new CompletableFuture<>();
+
         supervisor = new SupervisionStrategy(SupervisionStrategy.SS_RESTART, SupervisionStrategy.MODE_ONE_FOR_ONE);
-        actorOf(DeadLetterActor.props(logDeadLetters), DEAD_LETTERS);
+        actorOf(DeadLetterActor.props(logDeadLetters, initFuture), DEAD_LETTERS);
+        initFuture.get(); // Ensure DeadLetterActor is up and running
         actorOf(PubSubActor.props(), EVENTS);
     }
 }

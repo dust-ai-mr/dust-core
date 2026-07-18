@@ -32,8 +32,8 @@ public class ActorSystemBuilder {
     String host = "localhost";
     String name = null;
     Integer port = null;
-    Integer maxIncomingConnections = 16;
-    Integer maxOutgoingConnections = 16;
+    Integer maxIncomingConnections = 64;
+    Integer maxOutgoingConnections = 64;
     boolean logDeadLetters = true;
     List<Class<?>> registeredClasses = List.of();
 

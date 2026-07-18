@@ -187,7 +187,7 @@ public class PodManagerActor extends PersistentActor {
                 case CreateChildMsg msg -> {
                     String name = msg.name();
                     if (kids.containsKey(name)) {
-                        log.warn("{}: CreateChildMsg from {}. Child '{}' already exists.", self.path, sender, name);
+                        log.error("{}: CreateChildMsg from {}. Child '{}' already exists.", self.path, sender, name);
                     }
                     else {
                         ActorRef child = actorOf(childProps, name);

@@ -12,13 +12,14 @@ repositories {
     mavenLocal()
     mavenCentral()
     // Needed to get spock snapshot below
-    maven { url 'https://central.sonatype.com/artifact/org.spockframework/spock-core' }
+    // maven { url 'https://central.sonatype.com/artifact/org.spockframework/spock-core' }
 }
 
 dependencies {
     // This version for Java 21
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'org.spockframework:spock-core:2.4-M7-groovy-4.0'
     testImplementation 'org.projectlombok:lombok:1.18.30'
     implementation "org.apache.logging.log4j:log4j-api:2.25.3"

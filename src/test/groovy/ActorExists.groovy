@@ -1,7 +1,6 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorSystem
 import com.mentalresonance.dust.core.actors.ActorSystemBuilder
-import com.mentalresonance.dust.core.actors.PoisonPill
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.LogActor
 import groovy.util.logging.Slf4j
@@ -27,9 +26,9 @@ import spock.lang.Specification
  */
 
 @Slf4j
-class ChildResolution extends Specification {
+class ActorExists extends Specification {
 
-	public static success = false
+	public static exists = false, notExists = false
 
 	@Slf4j
 	static class Child0 extends Actor {
@@ -41,9 +40,11 @@ class ChildResolution extends Specification {
 		@Override
 		void preStart() {
 			actorOf(Child.props(), 'child')
-			log.info "Started child"
-			actorSelection("./child/logger").tell("Log me", self)
-			success = true
+			exists = actorExists('/user/child0/child')
+			log.info "Exists=$exists"
+			notExists = ! actorExists('/user/child0/child2')
+			log.info "NotExists=$notExists"
+			stopSelf()
 		}
 	}
 
@@ -53,21 +54,16 @@ class ChildResolution extends Specification {
 		static Props props() {
 			Props.create(Child)
 		}
-
-		@Override
-		void preStart() {
-			actorOf(LogActor.props(), 'logger')
-			log.info "Started logger"
-		}
 	}
 
-	def "Child Resolution"() {
+	def "Actor Exists"() {
 		when:
-			log.info ">>>>>>>>>>> Child Resolution"
+			log.info ">>>>>>>>>>> Actor Exists"
 			ActorSystem system = new ActorSystemBuilder().name("Test").build()
-			success = (null != system.context.actorOf(Child0.props(), 'child0'))
+			system.context.actorOf(Child0.props(), 'child0')
+			Thread.sleep(500)
 			system.stop()
 		then:
-			success
+			exists && notExists
 	}
 }

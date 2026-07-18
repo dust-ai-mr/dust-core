@@ -48,4 +48,14 @@ public class RandomUtils {
         } else
             return null;
     }
+
+    /**
+     * Returns a random int:
+     * @param min <= randowm
+     * @param max > random
+     * @return random
+     */
+    public static int nextInt(int min, int max) {
+        return ThreadLocalRandom.current().nextInt(min, max);
+    }
 }

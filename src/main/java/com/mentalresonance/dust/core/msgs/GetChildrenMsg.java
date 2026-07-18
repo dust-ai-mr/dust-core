@@ -34,18 +34,27 @@ import java.util.List;
  */
 @Getter
 @Setter
-public class GetChildrenMsg implements Serializable
-{
-   /**
-    * Returned list of children
-    */
+public class GetChildrenMsg implements Serializable {
+    /**
+     * Returned list of children
+     */
     List<ActorRef> children;
     /**
      * Used to differentiate request and response
      */
     Boolean isResponse = false;
+
     /**
      * Constructor
      */
-    public GetChildrenMsg() {}
+    public GetChildrenMsg() {
+    }
+
+    /**
+        Constructor for faking a response
+     */
+    public GetChildrenMsg(List<ActorRef> children) {
+        this.children = children;
+        this.isResponse = true;
+    }
 }
