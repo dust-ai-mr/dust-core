@@ -92,6 +92,7 @@ public class ActorSystemConnectionManager {
                             socket.setTargetId(targetId);
                         }
                         catch (IOException e) {
+                            log.error("Failed to get free socket for {} -> {} [{}]", sender, uri, e.getMessage());
                             try { socket.close(); } catch (Exception ignored) {}
                             freeSockets.offer(socket);
                             throw new RuntimeException(e);

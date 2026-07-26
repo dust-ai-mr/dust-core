@@ -77,15 +77,17 @@ class RemoteBigMsgTest extends Specification {
 						log.info("Msg size: ${sb.size()}")
 						boolean success
 						success = sender.tell(sb.toString(), self)
-						sb.append(sb.toString())
-						if (sb.size() > maxSize) {
-							sender.tell(new StopMsg(), null)
-							stopSelf()
-						}
 						if (! success) {
 							log.error "Error sending msg length ${sb.size()}"
 							sender.tell(new StopMsg(), null)
 							stopSelf()
+						}
+						else {
+							sb.append(sb.toString())
+							if (sb.size() > maxSize) {
+								sender.tell(new StopMsg(), null)
+								stopSelf()
+							}
 						}
 						break
 
@@ -98,9 +100,6 @@ class RemoteBigMsgTest extends Specification {
 
 	@Slf4j
 	static class Catcher extends Actor {
-		LinkedHashMap x;
-		Map<ActorRef, Integer> incoming = [:]  //
-		Map<ActorRef, Integer> outgoing = [:]
 
 		static Props props() {
 			Props.create(Catcher)
@@ -110,6 +109,7 @@ class RemoteBigMsgTest extends Specification {
 			(Serializable message) -> {
 				switch(message) {
 					case String:
+						log.info "Got msg size ${((String)message).size()}"
 						sender.tell(new StartMsg(), self)
 						break
 
@@ -120,16 +120,6 @@ class RemoteBigMsgTest extends Specification {
 					default:
 						log.error "???"
 				}
-			}
-		}
-
-
-
-		static class Shot implements Serializable {
-			int count
-
-			Shot(int count) {
-				this.count = count
 			}
 		}
 	}

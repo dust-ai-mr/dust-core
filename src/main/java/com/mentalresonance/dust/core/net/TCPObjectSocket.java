@@ -44,8 +44,7 @@ public class TCPObjectSocket {
 
     public TCPObjectSocket(List<Class<?>> registeredClasses) {
         this.fory = ForyService.fory(registeredClasses);
-        this.buffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY);
-        this.mem = MemoryUtils.wrap(buffer);
+        reset();
     }
 
     public TCPObjectSocket(List<Class<?>> registeredClasses, SocketChannel ch) {
@@ -53,10 +52,9 @@ public class TCPObjectSocket {
         wrap(ch);
     }
 
-    public void init() {
-        buffer.clear();
-        mem.readerIndex(0);
-        mem.writerIndex(0);
+    private void reset() {
+        this.buffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY);
+        this.mem = MemoryUtils.wrap(buffer);
     }
 
     public TCPObjectSocket wrap(SocketChannel ch) {
@@ -100,6 +98,7 @@ public class TCPObjectSocket {
                 int payloadSize = end - HEADER_SIZE;
 
                 if (payloadSize < 0 || payloadSize + HEADER_SIZE > MAX_FRAME_SIZE) {
+                    reset(); // Need buffer
                     throw new RemotePayloadSizeException("Serialized payload size " + payloadSize + " exceeds max frame size: " + MAX_FRAME_SIZE);
                 }
 
@@ -114,7 +113,8 @@ public class TCPObjectSocket {
                 writeFully(buffer);
                 // log.info("Sent {} bytes (Payload: {}) for {}", end, payloadSize, obj);
                 return;
-            } catch (IndexOutOfBoundsException | BufferOverflowException | IllegalArgumentException e) {
+            } // Resize the buffer and retry
+            catch (IndexOutOfBoundsException | BufferOverflowException | IllegalArgumentException e) {
                 ByteBuffer newBuffer = ByteBuffer.allocateDirect(2*buffer.capacity());
                 this.buffer = newBuffer;
                 this.mem = MemoryUtils.wrap(newBuffer);
