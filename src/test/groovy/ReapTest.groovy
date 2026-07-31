@@ -5,8 +5,8 @@ import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.ReaperActor
 import com.mentalresonance.dust.core.msgs.StartMsg
-import com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg
-import com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg.ReapResponseMsg
+import com.mentalresonance.dust.core.msgs.ReapMsg
+import com.mentalresonance.dust.core.msgs.ReapMsg.ReapResponseMsg
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
 

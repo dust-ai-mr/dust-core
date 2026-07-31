@@ -5,6 +5,7 @@ import com.mentalresonance.dust.core.actors.ActorBehavior;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.GetChildrenMsg;
+import com.mentalresonance.dust.core.msgs.ReapMsg;
 import com.mentalresonance.dust.core.msgs.StartMsg;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-import static com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg.ReapResponseMsg;
+import static com.mentalresonance.dust.core.msgs.ReapMsg.ReapResponseMsg;
 
 /**
  * A common pattern. Reap a message to all the parent's children, transform the results
@@ -79,7 +80,7 @@ public class ReapTransformServiceActor extends Actor {
                     List<ActorRef> children = new ArrayList<>(msg.getChildren());
                     children.remove(self);
                     actorOf(ReaperActor.props(timeoutMs)).tell(
-                        new ReaperActor.ReapMsg(
+                        new ReapMsg(
                             reapingClz,
                             children,
                             ReapResponseMsg.class

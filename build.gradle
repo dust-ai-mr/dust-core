@@ -30,8 +30,8 @@ dependencies {
 
     api "com.github.ben-manes.caffeine:caffeine:3.1.8"
 
-    implementation("org.apache.fory:fory-core:0.15.0")
-
+    // implementation("org.apache.fory:fory-core:0.15.0")
+    implementation("org.apache.fory:fory-core:1.4.0")
     implementation 'com.google.code.gson:gson:2.13.2'
 
     implementation platform('com.fasterxml.jackson:jackson-bom:2.21.3')
