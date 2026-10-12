@@ -26,16 +26,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class YesNoMsg implements Serializable {
-
-    /**
-     * yes ?
-     */
-    public final boolean yes;
-
-    /**
-     * Constructor
-     * @param yes ?
-     */
-    public YesNoMsg(boolean yes) { this.yes = yes; }
-}
+public record YesNoMsg(boolean yes) implements Serializable {}

@@ -26,9 +26,5 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class WatchMsg implements Serializable {
-    /**
-     * Constructor
-     */
-    public WatchMsg() {}
-}
+public record WatchMsg() implements Serializable {}
+

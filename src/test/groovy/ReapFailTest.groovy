@@ -2,10 +2,11 @@ import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.ReaperActor
-import com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg
-import com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg.ReapResponseMsg
+import com.mentalresonance.dust.core.msgs.ReapMsg
+import com.mentalresonance.dust.core.msgs.ReapMsg.ReapResponseMsg
 import com.mentalresonance.dust.core.msgs.StartMsg
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
@@ -19,7 +20,7 @@ import spock.lang.Specification
 @Slf4j
 class ReapFailTest extends Specification {
 
-	static complete
+	static boolean complete = false
 	static ActorRef badChildRef
 
 	@Slf4j
@@ -147,13 +148,14 @@ class ReapFailTest extends Specification {
 		}
 	}
 
-	def "Reap"() {
+	def "ReapFailText"() {
 		when:
-			ActorSystem system = new ActorSystem("ReapTest")
+			log.info ">>>>>>>>>>> ReapFailText"
+			ActorSystem system = new ActorSystemBuilder().name("ReapTest").build()
 			system.context.actorOf(ParentActor.props(), 'parent')
 			system.context.actorOf(ClientActor.props(), 'client').waitForDeath();
 			system.stop()
-					then:
+		then:
 			complete
 	}
 

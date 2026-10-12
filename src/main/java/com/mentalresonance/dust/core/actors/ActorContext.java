@@ -240,8 +240,14 @@ public class ActorContext {
                  */
                 if (null == resolved) {
                     log.trace("{} not found", path);
-                    resolved = deadLetterRef(path);
-                } else {
+                    if (system.isStopped()) {
+                        log.error("System is stopped, cannot resolve {}", path);
+                        throw new ActorSelectionException("System is stopped, cannot resolve " + path);
+                    }
+                    else
+                        resolved = deadLetterRef(path);
+                }
+                else {
                     log.trace("{} resolved", path);
                     resolvePaths.put(path, resolved);
                 }
@@ -262,7 +268,7 @@ public class ActorContext {
         ActorRef deadLetter = getDeadLetterActor();
         ActorRef ref = new ActorRef(path, this, deadLetter.actor);
         ref.isDeadLetter = true;
-        ref.thread = deadLetter.thread;
+        ref.mailboxThread = deadLetter.mailboxThread;
         ref.mailBox = deadLetter.mailBox;
         return ref;
     }
@@ -274,7 +280,7 @@ public class ActorContext {
      */
     public void stop(ActorRef ref, Throwable cause) {
         ref.isException = cause;
-        ref.thread.interrupt();
+        ref.mailboxThread.interrupt();
     }
 
     /**

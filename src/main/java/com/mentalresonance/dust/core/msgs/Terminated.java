@@ -19,8 +19,6 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
@@ -29,18 +27,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-@Getter
-public class Terminated implements Serializable {
-    /**
-     * Name of terminated Actor
-     */
-    final String name;
-
-    /**
-     * Constructor
-     * @param name of terminated Actor
-     */
-    public Terminated(String name) {
-        this.name = name;
-    }
-}
+public record Terminated(String name) implements Serializable {}

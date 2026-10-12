@@ -27,9 +27,4 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-public class SnapshotSuccessMsg implements Serializable {
-    /**
-     * Constructor
-     */
-    public SnapshotSuccessMsg() {}
-}
+public record SnapshotSuccessMsg() implements Serializable {}

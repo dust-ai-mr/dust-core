@@ -26,10 +26,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class NextMsg implements Serializable {
-
-    /**
-     * Constructor
-     */
-    public NextMsg() {}
-}
+public record NextMsg() implements Serializable {}

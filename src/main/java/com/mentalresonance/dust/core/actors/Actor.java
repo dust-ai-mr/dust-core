@@ -21,14 +21,15 @@ package com.mentalresonance.dust.core.actors;
 
 import com.mentalresonance.dust.core.msgs.*;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
-import com.mentalresonance.dust.core.utils.DustLinkedBlockingQueue;
+import com.mentalresonance.dust.core.system.exceptions.ActorSelectionException;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-
+import org.jctools.queues.MpscLinkedQueue;
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.util.*;
+import java.util.concurrent.locks.LockSupport;
 import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*;
 
 /**
@@ -104,7 +105,7 @@ public class Actor implements Runnable {
     /**
      * Fifo list of any stashed messages
      */
-    protected List<SentMessage> stashed = new LinkedList<>();
+    final ArrayDeque<SentMessage> stashBuffer = new ArrayDeque<>();
 
     /**
      * Optional dead man's handle
@@ -112,10 +113,17 @@ public class Actor implements Runnable {
     private Cancellable deadMansHandle = null;
 
     /**
+     * See becomeAndTell()
+     */
+    private SentMessage pushedMessage = null;
+
+    /**
      * While running is true I process messages
      * Stopping flag indicates I am in the shutdown procedure
      */
     boolean running, stopping = false;
+
+    boolean useStash = false;
 
     /**
      * Constructor. <b>This should not be called directly</b> rather rely on it being called
@@ -135,7 +143,7 @@ public class Actor implements Runnable {
             switch(message) {
 
                 case ChildExceptionMsg msg -> {
-                    log.warn(String.format("%s: Exception from child: %s - %s", self.path, sender, msg.getException().getMessage()));
+                    log.warn(String.format("%s: Exception from child: %s - %s", self.path, sender, msg.exception().getMessage()));
                 }
                 case CreatedChildMsg msg -> {
                     // Commonly ignored
@@ -154,6 +162,7 @@ public class Actor implements Runnable {
      * @throws Exception can be thrown on preStart.
      */
     protected void preStart() throws Exception {
+        debug = true;
         // log.trace("Started: " + self.path + " context:" + context);
     }
 
@@ -233,7 +242,7 @@ public class Actor implements Runnable {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             // Someone is trying to stop us. So interrupt us again to actually start the stopping process
-            self.thread.interrupt();
+            self.mailboxThread.interrupt();
         }
     }
 
@@ -244,6 +253,13 @@ public class Actor implements Runnable {
     protected Collection<ActorRef> getChildren() {
         return children.values();
     }
+
+    /**
+     * Get child with given name of this Actor
+     * @param name of child
+     * @return ActorRef of child if exists or null
+     */
+    protected ActorRef child(String name) { return children.get(name); }
     /**
      * Get the current number of messages waiting in the mailbox
      *
@@ -333,9 +349,13 @@ public class Actor implements Runnable {
         while (running)
         {
             try {
-                sentMessage = self.mailBox.queue.take();
-                sender = sentMessage.sender;
-                log.trace("{} got message {} from {}", self.path, sentMessage.message, sender);
+                if (null == pushedMessage) {
+                    sentMessage = getSentMessage();
+                }
+                else {
+                    sentMessage = pushedMessage;
+                    pushedMessage = null;
+                }
             }
             /*
              * If I'm interrupted outside of waiting for LOCK below then it must be someone wanting me to stop.
@@ -344,16 +364,27 @@ public class Actor implements Runnable {
              */
             catch (InterruptedException x) {
                 log.trace("{} interrupted while processing {}", self.path, sentMessage);
-                if (self.lifecycle == ActorRef.LC_INTERRUPT_RESTART) {
-                    self.lifecycle = ActorRef.LC_RESTART;
-                    running = false;
-                } else if (self.lifecycle == ActorRef.LC_INTERRUPT_RESUME) {
-                    self.lifecycle = ActorRef.LC_RESUME;
-                    running = false;
-                } else {
+                if (PersistentActor.isInShutdown()) { // I am shutting down - ignore any supervision strategy
                     self.lifecycle = ActorRef.LC_STOP;
                     startStopping();
                 }
+                else if (self.lifecycle == ActorRef.LC_INTERRUPT_RESTART) {
+                    self.lifecycle = ActorRef.LC_RESTART;
+                    running = false;
+                }
+                else if (self.lifecycle == ActorRef.LC_INTERRUPT_RESUME) {
+                    self.lifecycle = ActorRef.LC_RESUME;
+                    running = true;
+                }
+                else {
+                    self.lifecycle = ActorRef.LC_STOP;
+                    startStopping();
+                }
+                continue;
+            }
+            catch (IllegalStateException e) { // Mailbox queue is null - this should never happen.
+                log.error(e.getMessage());
+                running = false;
                 continue;
             }
 
@@ -362,10 +393,11 @@ public class Actor implements Runnable {
              * a context.stop()
              */
             try {
-                Serializable sentMsg = sentMessage.message;
+                Serializable sentMsg = sentMessage.message();
 
                 if (null == sentMsg) {
-                    log.warn("%s sent null message to %s. Ignored".formatted(sender.toString(), self.path));
+                    String sentBy = null != sender ? sender.toString() : "Unknown";
+                    log.warn("{} sent null message to {}. Ignored", sentBy, self.path);
                 }
                 else {
                     if (stopping && ! (sentMsg instanceof _Stopped)) {
@@ -381,11 +413,17 @@ public class Actor implements Runnable {
                         case _Stopped ignored -> {
                             if (null == children.remove(sender.name))
                                 log.warn(self.path + ": child: " + sender.name + " was not in children list and is stopping ...");
-                            if (stopping && children.isEmpty())
+                            if (stopping && children.isEmpty()) {
                                 running = false;
+                            }
                         }
 
-                        case WatchMsg ignored -> watchers.add(sender);
+                        case WatchMsg ignored -> {
+                            if (null == sender)
+                                log.error("WatchMsg received with null sender");
+                            else
+                                watchers.add(sender);
+                        }
 
                         case UnWatchMsg ignored ->  watchers.remove(sender);
 
@@ -399,13 +437,14 @@ public class Actor implements Runnable {
                          * the child may be dead.
                          */
                         case DeleteChildMsg msg -> {
+                            String name = msg.name();
                             try {
-                                ActorRef child = actorSelection("./" + msg.getName()).getRef();
+                                ActorRef child = actorSelection("./" + name).getRef();
                                 if (! child.isDeadLetter) {
-                                    context.stop(actorSelection("./" + msg.getName()).getRef());
+                                    context.stop(actorSelection("./" + name).getRef());
                                 }
                                 else {
-                                    children.remove(msg.getName());
+                                    children.remove(name);
                                 }
                             } catch (Exception e) {
                                 /*
@@ -413,8 +452,8 @@ public class Actor implements Runnable {
                                    I may be holding an expired ActorRef in this case, so remove it as a child
                                    if I have it.
                                  */
-                                log.error("{}: failed to delete child {}: {} - zombie?", self.path, msg.getName(), e.getMessage());
-                                children.remove(msg.getName());
+                                log.error("{}: failed to delete child {}: {} - zombie?", self.path,name, e.getMessage());
+                                children.remove(name);
                             }
                         }
 
@@ -470,7 +509,7 @@ public class Actor implements Runnable {
                                  * If the child is the original thrower it will be sat waiting on the lock
                                  * if not we can interrupt it anyway having set its lifecycle state
                                  */
-                                child.thread.interrupt();
+                                child.mailboxThread.interrupt();
                                 /*
                                  * Restarting is tricky - we want the sender ref to still be valid since it is held by many
                                  * other Actors, so we need to just 'adjust' it to match the new conditions.
@@ -479,7 +518,7 @@ public class Actor implements Runnable {
                                  * LOCK (via the interrupt above) and set its lifecycle to LC_RESTART so check for both
                                  */
                                 if (child.lifecycle == ActorRef.LC_INTERRUPT_RESTART || child.lifecycle == ActorRef.LC_RESTART) {
-                                    child.thread.join(); // Wait for child to stop
+                                    child.mailboxThread.join(); // Wait for child to stop
                                     children.put(child.name,  restart(child)); // Restart it and make it my child
                                 }
                             }
@@ -490,10 +529,10 @@ public class Actor implements Runnable {
 
                         default -> {
                             if (null != behavior) {
-                                behavior.onMessage(sentMessage.message);
+                                behavior.onMessage(sentMessage.message());
                             }
                             else {
-                                log.warn(String.format("%s: cannot handle message %s from %s", self.path, sentMessage.message, sender));
+                                log.warn(String.format("%s: cannot handle message %s from %s", self.path, sentMessage.message(), sender));
                             }
                         }
                     }
@@ -508,7 +547,7 @@ public class Actor implements Runnable {
                 self.isException = t;
 
                 try { // Sometimes toString()ing the message can throw an Exception !!
-                    log.error(self.path + ": Exception when processing: " + sentMessage.message + " :" + t.getMessage());
+                    log.error(self.path + ": Exception when processing: " + sentMessage.message() + " :" + t.getMessage());
                     if (debug) t.printStackTrace();
                 }
                 catch (Exception e) {
@@ -562,7 +601,7 @@ public class Actor implements Runnable {
          */
 
         if (self.lifecycle == ActorRef.LC_RESUME) {
-            self.thread = Thread.startVirtualThread(this);
+            self.mailboxThread = Thread.startVirtualThread(this);
             return;
         }
         /*
@@ -572,13 +611,10 @@ public class Actor implements Runnable {
         /*
          * If I'm exiting because of a restart then don't tell parent, keep mailbox and don't call postStop()
          */
-        if (self.lifecycle != ActorRef.LC_RESTART)
-        {
+        if (self.lifecycle != ActorRef.LC_RESTART) {
 
             try {
                 postStop();
-                if (null != deadMansHandle)
-                    deadMansHandle.cancel();
             }
             catch (Exception e) {
                 log.error(String.format("%s postStop() exception: %s", self.path, e.getMessage()));
@@ -586,8 +622,9 @@ public class Actor implements Runnable {
                     e.printStackTrace();
                 // Todo: what ???
             }
-            self.mailBox.queue = null;
             self.mailBox.dead = true;
+            self.mailBox.queue = null;
+
             if (null != parent) {
                 parent.tell(new _Stopped(), self);
             }
@@ -598,7 +635,44 @@ public class Actor implements Runnable {
             watchers.forEach((w) -> w.tell(new Terminated(self.name), self));
         }
         cancelDeadMansHandle();
-        // log.trace("{} stopped", self.path);
+    }
+
+    private SentMessage getSentMessage() throws InterruptedException {
+        SentMessage sentMessage;
+
+        while(true) {
+            if (Thread.interrupted()) { // This resets the interrupt
+                throw new InterruptedException("Actor mailbox interrupted during take");
+            }
+            MpscLinkedQueue<SentMessage> queue = self.mailBox.queue;
+            if (null == queue) {
+                log.error("{} Q is null", self.path);
+                throw new IllegalStateException("Mailbox queue is null");
+            }
+            if (useStash) {
+                useStash = null != (sentMessage = stashBuffer.pollFirst());
+                if (null == sentMessage)
+                    sentMessage = queue.poll();
+            }
+            else
+                sentMessage = queue.poll();
+
+            if (sentMessage != null) {
+                sender = sentMessage.sender();
+                return sentMessage;
+            }
+            else {
+                // Before parking wait a tiny bit to see if another message comes in
+                for (int i = 0; i < 10; i++) {
+                    Thread.onSpinWait();
+                    if ((sentMessage = queue.poll()) != null) {
+                        sender = sentMessage.sender();
+                        return sentMessage;
+                    }
+                }
+                LockSupport.park();
+            }
+        }
     }
 
     /**
@@ -607,13 +681,17 @@ public class Actor implements Runnable {
      * If no children simply decide if we are going to stop of not.
      */
     private void startStopping() {
-        log.trace("{} stopping, Has {} children", self.path, children.size());
         ParentException pex = self.isException != null ? new ParentException(self.isException) : null;
+        stopping = true;
         if (! children.isEmpty()) {
-            stopping = true;
             children.forEach((name, child) -> {
-                child.lifecycle = ActorRef.LC_STOP;
-                context.stop(child, pex);
+                try {
+                    child.lifecycle = ActorRef.LC_STOP;
+                    context.stop(child, pex);
+                }
+                catch (Exception e) {
+                    log.error("startStopping() exception: " + e.getMessage());
+                }
             });
         } else
             running = false;
@@ -632,9 +710,69 @@ public class Actor implements Runnable {
      * @param newBehavior the new behavior to follow
      */
     public void stashBecome(ActorBehavior newBehavior) {
-        log.info("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
         behaviors.push(this.behavior);
         become(newBehavior);
+    }
+
+    /**
+     * Replace current behaviour with specified one *and* put message at front of the queue.
+     * This is useful for the idiom of "let a clas mf messages be handles by a different behavior,
+     * so become() and then send the message to yourself". This works *but* there is always a chance that
+     * other messages crept into the queue while you are processing the become and telling yourself. This means
+     * the come()'d behavior needs to check the message and stash them until the correct message comes
+     * along.
+     * <br>
+     * Again this is quite doable but means you can't rely on one-and-done to unbecome(), so it adds
+     * some annoying bookkeeping.
+     * @param behavior new behavior
+     * @param message  message to send myself when I become
+     */
+    public void becomeAndTell(ActorBehavior behavior, Serializable message) {
+        pushedMessage = new SentMessage(message, sender);
+        this.behavior = behavior;
+    }
+
+    public void becomeAndTell(ActorBehavior behavior, Serializable message, ActorRef fromRef) {
+        pushedMessage = new SentMessage(message, fromRef);
+        this.behavior = behavior;
+    }
+
+    /**
+     * Stashes current behavior and replaces it with newBehavior
+     * @param newBehavior the new behavior to follow
+     * @param message  message to send myself when I become
+     */
+    public void stashBecomeAndTell(ActorBehavior newBehavior, Serializable message) {
+        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        behaviors.push(this.behavior);
+        becomeAndTell(newBehavior, message);
+    }
+
+    public void stashBecomeAndTell(ActorBehavior newBehavior, Serializable message, ActorRef fromRef) {
+        log.trace("Stashing %s and becoming %s".formatted(this.behavior, newBehavior));
+        behaviors.push(this.behavior);
+        becomeAndTell(newBehavior, message, fromRef);
+    }
+
+    /**
+     * Pops last stashed behavior and makes it current behavior
+     * @param unstash if true unstash all messages in stash after unBecoming
+     * @return Stashed behavior
+     * @throws Exception if stash is empty
+     */
+    public ActorBehavior unBecome(boolean unstash) throws Exception {
+        ActorBehavior behavior;
+
+        if (! behaviors.isEmpty()) {
+            behavior = behaviors.pop();
+            log.trace("Popping behavior = %s".formatted(behavior));
+            become(behavior);
+            if (unstash)
+                unstashAll();
+        } else
+            throw new Exception("Empty behavior queue on unBecome");
+        return behavior;
     }
 
     /**
@@ -642,17 +780,7 @@ public class Actor implements Runnable {
      * @return Stashed behavior
      * @throws Exception if stash is empty
      */
-    public ActorBehavior unBecome() throws Exception {
-        ActorBehavior behavior;
-
-        if (! behaviors.isEmpty()) {
-            behavior = behaviors.pop();
-            // log.trace("Popping behavior = %s".formatted(behavior));
-            become(behavior);
-        } else
-            throw new Exception("Empty behavior queue on unBecome");
-        return behavior;
-    }
+    public ActorBehavior unBecome() throws Exception { return unBecome(false); }
 
     /**
      * Delegate all messages, except instances of NonDelegatedMsg, to the target Actor.
@@ -696,8 +824,8 @@ public class Actor implements Runnable {
                     unBecome();
                     if (null != thenBecome)
                         stashBecome(thenBecome);
-                    if (null != dm.getMsg())
-                        tellSelf(dm.getMsg());
+                    if (null != dm.msg())
+                        tellSelf(dm.msg());
                     else if (null != thenMsg)
                         tellSelf(thenMsg);
                 }
@@ -716,15 +844,15 @@ public class Actor implements Runnable {
      * @param msg the message
      */
     protected void stash(Serializable msg) {
-        stashed.add(new SentMessage(msg, sender));
+        stashBuffer.add(new SentMessage(msg, sender));
     }
 
     /**
      * Add all stashed messages, in order, to our mailbox. These are added to the *front* of the mailbox
      */
     protected void unstashAll() {
-        self.unstashAll(stashed);
-        stashed = new LinkedList<>();
+        useStash = true;
+        LockSupport.unpark(self.mailboxThread);
     }
     /**
      * Sends the message to me in ~millis milliseconds
@@ -808,10 +936,14 @@ public class Actor implements Runnable {
             ActorRef exists;
             assert name != null: "Child of " + self.path + " given null name!";
             if (null != (exists = children.get(name))) {
-                log.warn("Child %s of %s already exists !!".formatted(name, self.path));
+                log.warn("Child %s of %s already exists [actorOf] !!".formatted(name, self.path));
                 return exists;
             }
             Actor actor = createInstanceWithParameters(props.actorClass, props.actorArgs);
+
+            // Create a latch to synchronize startup
+            java.util.concurrent.CountDownLatch startupLatch = new java.util.concurrent.CountDownLatch(1);
+
             ActorRef ref = new ActorRef(self.path, name, context, actor);
 
             ref.props = props;
@@ -821,10 +953,25 @@ public class Actor implements Runnable {
             actor.parent = self;
             actor.grandParent = parent;
             actor.self = ref;
-            ref.thread = Thread.startVirtualThread(actor);
-
+            ref.mailboxThread = Thread.ofVirtual().start(() -> {
+                /*
+                    Wait until the parent thread finishes setting up the 'ref'
+                    If we are killing *very* shortly after creating and are still
+                    in the await we could error. So have a backup await.
+                */
+                try {
+                    startupLatch.await();
+                } catch (InterruptedException e) {
+                    try {
+                        startupLatch.await();
+                    } catch (InterruptedException e2) {
+                        log.error("Failed to start actor -- interrupted during run() setup");
+                    }
+                }
+                actor.run();
+            });
             children.put(name, ref);
-
+            startupLatch.countDown(); // Will let await() continue and start Actor
             return ref;
         }
         catch (Exception e) {
@@ -835,6 +982,33 @@ public class Actor implements Runnable {
             self.tell(new ActorInstantiationException(e), null);
         }
         return null;
+    }
+
+    /**
+     * Convenience - only tell target if it is not null
+     * @param target the recipient
+     * @param msg the message
+     * @param sender the sender
+     */
+    protected void tellIf(ActorRef target, Serializable msg, ActorRef sender) {
+        if (null != target) target.tell(msg, sender);
+    }
+
+    /**
+     * Convenience - only tell target (from me) if it is not null
+     * @param target the recipient
+     * @param msg the message
+     */
+    protected void tellIf(ActorRef target, Serializable msg) {
+        if (null != target) target.tell(msg, self);
+    }
+
+    /**
+     * Convenience - only tell sender (from me) if it is not null
+     * @param msg the message
+     */
+    protected void replyIf(Serializable msg) {
+        tellIf(sender, msg, self);
     }
 
     Actor createInstanceWithParameters(Class<?> actorClass, Object[] args) throws Exception {
@@ -973,6 +1147,20 @@ public class Actor implements Runnable {
     }
 
     /**
+     * Does the Actor at path actually exists. Note that actorSelection always returns an
+     * ActorSelection whether or not a 'real' Actor exists at the endpoint. If no Actor was found
+     * then ActorSelection refers to the Deadletter Actor, and so we check for this
+     */
+
+    protected boolean actorExists(String path) throws ActorSelectionException, InterruptedException {
+        return ! actorSelection(path).getRef().isDeadLetter;
+    }
+
+    protected boolean childExists(String name) {
+        return children.get(name) != null;
+    }
+
+    /**
      * Restart the Actor at ref. We create a new instance of the Actor
      * and patch up its context and patch up its old Ref.
      *
@@ -992,7 +1180,7 @@ public class Actor implements Runnable {
 
             ref.actor = actor;
             ref.lifecycle = ActorRef.LC_RESTART;
-            ref.thread = Thread.startVirtualThread(actor);
+            ref.mailboxThread = Thread.startVirtualThread(actor);
             // log.trace("{} restarted ${}", self.path, ref);
         }
         catch (Exception e) {
@@ -1022,8 +1210,18 @@ public class Actor implements Runnable {
 
     /**
      * Time saver for stopSelf()
+     * Note this interrupts the mailbox thread so it is really a crashout
      */
     protected void stopSelf() { context.stop(self); }
+
+    /**
+     * This is a more careful stop .. it sends itself a PoisonPill
+     * but ensures it will be next Message the Actor gets after processing
+     * whatever invoked this method
+     */
+    protected void carefulStopSelf() {
+        pushedMessage = new SentMessage(new PoisonPill(), null);
+    }
 
     /**
      * We wrap the message Q which ActorRef's have references to. So when we stop an Actor we simply replace the
@@ -1034,7 +1232,8 @@ public class Actor implements Runnable {
         @Setter
         Boolean dead = false;
         @Getter
-        DustLinkedBlockingQueue<SentMessage> queue = new DustLinkedBlockingQueue<>();
+        //MpscUnboundedArrayQueue<SentMessage> queue = new MpscUnboundedArrayQueue<>(128);
+        MpscLinkedQueue<SentMessage> queue = new MpscLinkedQueue<>();
 
         /**
          * Create mailbox

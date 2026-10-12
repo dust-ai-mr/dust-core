@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Cancellable
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.StopMsg
@@ -69,9 +70,11 @@ class Watch extends Specification {
 	 * Notice even though we take care to cancel the Stops we still get a Dead letter which is the remaining Watch going
 	 * off.
 	 */
-	def "Suicide Pact 1"() {
+	def "Watch Test"() {
 		when:
-			ActorSystem system = new ActorSystem("WatchTest")
+			log.info ">>>>>>>>>>> Watch Test"
+
+			ActorSystem system = new ActorSystemBuilder().name("WatchTest").build()
 
 			ActorRef w1 = system.context.actorOf( Watcher.props(1000), "W1")
 			ActorRef w2 = system.context.actorOf( Watcher.props(2000), "W2")
@@ -82,7 +85,7 @@ class Watch extends Specification {
 			w1.waitForDeath()
 			w2.waitForDeath()
 			system.stop()
-					then:
+		then:
 			stopped
 			terminated
 

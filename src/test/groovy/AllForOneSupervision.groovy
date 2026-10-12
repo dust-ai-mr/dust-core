@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.PoisonPill
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.SupervisionStrategy
@@ -18,7 +19,7 @@ import static com.mentalresonance.dust.core.actors.SupervisionStrategy.*
 @Slf4j
 class AllForOneSupervision extends Specification {
 
-	ActorSystem system = new ActorSystem("AllForOneSupervision")
+	ActorSystem system = new ActorSystemBuilder().name("AllForOneSupervision").build()
 
 	public static boolean stopped = false, restarted = false, resumed = false
 
@@ -53,8 +54,8 @@ class AllForOneSupervision extends Specification {
 				{
 					case ChildExceptionMsg -> {
 						ChildExceptionMsg msg = (ChildExceptionMsg) messsage
-						log.info "${msg.child} threw exception. Supervision=$supervisor  Will stop in 5 second"
-						scheduleIn(new PoisonPill(), 5000)
+						log.info "${msg.child} threw exception. Supervision=$supervisor  Will stop in 1 second"
+						scheduleIn(new PoisonPill(), 1000)
 					}
 					default -> super.createBehavior().onMessage(messsage)
 				}
@@ -76,8 +77,7 @@ class AllForOneSupervision extends Specification {
 
 		@Override
 		void postStop() {
-			if (! ActorSystem.isStopping)
-				stopped = true
+			stopped = true
 			log.info "${self.path} stopped"
 		}
 
@@ -107,43 +107,44 @@ class AllForOneSupervision extends Specification {
 
 	/*
 	 Create three tests - one for each strategy (stop, resume or restart). Since mode is all for one the chosen
-	 strategy will be applied to the failing Actor and its siblings
+	 strategy will be applied to the failing Actor and its siblings.
+	 Note: Even on resume the Actor will stop normally so it will call postStop() and our stopped flag will be set
 	 */
 	def "Stop Supervision"() {
 		when:
-			log.info "Starting 'Stop' strategy"
+			log.info ">>>>>>>>>>>>> Starting 'Stop' strategy"
 			system.context.actorOf( Supervisor.props(SS_STOP, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			! resumed
-			! restarted
+			(! resumed)
+			(! restarted)
 			stopped
 	}
 
 	def "Resume Supervision"() {
 		when:
-			log.info "Starting 'Resume' strategy"
+			log.info ">>>>>>>>>>>>>>> Starting 'Resume' strategy"
 			stopped = false; restarted = false; resumed = false
 			system.context.actorOf( Supervisor.props(SS_RESUME, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			! stopped
-			! restarted
+			stopped
+			(! restarted)
 			resumed
 	}
 
 	def "Restart Supervision"() {
 		when:
-			log.info "Starting 'Restart' strategy"
+			log.info ">>>>>>>>>>> Starting 'Restart' strategy"
 			stopped = false; restarted = false; resumed = false
 			system.context.actorOf( Supervisor.props(SS_RESTART, MODE_ALL_FOR_ONE), "supervisor").waitForDeath()
 			system.stop()
 			log.info "stopped=$stopped, resumed=$resumed, restarted=$restarted"
 		then:
-			! stopped
-			! resumed
+			stopped
+			(! resumed)
 			restarted
 	}
 }

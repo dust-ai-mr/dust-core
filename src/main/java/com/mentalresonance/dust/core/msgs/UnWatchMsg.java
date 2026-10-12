@@ -26,9 +26,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class UnWatchMsg implements Serializable {
-    /**
-     * Constructor
-     */
-    public UnWatchMsg() {}
-}
+public record UnWatchMsg() implements Serializable {}

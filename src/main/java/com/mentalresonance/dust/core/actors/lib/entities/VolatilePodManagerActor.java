@@ -90,11 +90,11 @@ public class VolatilePodManagerActor extends Actor {
                 case Terminated ignored -> kids.remove(sender.name);
 
                 case CreateChildMsg msg -> {
-                    String name = msg.getName();
+                    String name = msg.name();
                     ActorRef child = actorOf(childProps, name);
                     kids.put(name, true);
-                    if (null != msg.getMsg()) {
-                        child.tell(msg.getMsg(), sender);
+                    if (null != msg.msg()) {
+                        child.tell(msg.msg(), sender);
                     }
                     if (null != sender) {
                         sender.tell(new CreatedChildMsg(name), self);

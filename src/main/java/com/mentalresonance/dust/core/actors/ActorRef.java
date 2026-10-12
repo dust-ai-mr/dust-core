@@ -22,17 +22,17 @@ package com.mentalresonance.dust.core.actors;
 import com.mentalresonance.dust.core.msgs.DeadLetter;
 import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
+import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
+import com.mentalresonance.dust.core.net.RemotePayloadSizeException;
+import com.mentalresonance.dust.core.net.TCPObjectSocket;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.nustaq.net.TCPObjectSocket;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.URI;
+import java.nio.channels.ClosedByInterruptException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-
-import static com.mentalresonance.dust.core.system.ActorSystemConnectionManager.WrappedTCPObjectSocket;
+import java.util.concurrent.locks.LockSupport;
 
 
 /**
@@ -43,15 +43,15 @@ import static com.mentalresonance.dust.core.system.ActorSystemConnectionManager.
  */
 @Slf4j
 public class ActorRef implements Serializable {
-
-    final transient ActorContext context;
+    @Setter
+    transient ActorContext context;
 
     transient Actor actor;
 
     /**
      * If I am telling remotely then recipient needs to be able to find me via host + path
      */
-    String host = null;
+    final String host;
 
     /**
      * If true then this is actually a ref to dead letters (i.e. path does not exist.
@@ -70,17 +70,18 @@ public class ActorRef implements Serializable {
     /**
      * The thread running the Actor if local else null
      */
-    public transient Thread thread = null;
+    public transient volatile Thread mailboxThread = null;
 
     /**
      * Mailbox if local else null
      */
-    public transient Actor.MailBox mailBox = null;
+    public transient volatile Actor.MailBox mailBox = null;
 
     /**
      * Path down to root context /. Always ends in '/'
      */
     public String path;
+
     /**
      * Array of names from / down to me
      */
@@ -89,7 +90,6 @@ public class ActorRef implements Serializable {
      * Name of Actor if local else null
      */
     public String name = null;
-
     /**
      * Props that created this Actor if local else null
      */
@@ -135,16 +135,24 @@ public class ActorRef implements Serializable {
      */
     public final static int LC_INTERRUPT_RESTART = 6;
 
+    public static int NullActorRefID = "NULL".hashCode();  // Used as srcId for remote messages involving null sender
+
+    @Setter
+    private transient ActorSystemConnectionManager actorSystemConnectionManager;
+
     /**
-     * Construct ActorRef in the context to Actor at path
+     * Construct ActorRef in the context to Actor at path. If actor is null then
+     * path is to a remote Actor
      * @param path of Actor
      * @param context to use
+     * @param actor to use
      */
     public ActorRef(String path, ActorContext context, Actor actor) {
         this.path = path;
         this.context = context;
         this.host = context.hostContext;
         this.actor = actor;
+        actorSystemConnectionManager = context.system.actorSystemConnectionManager;
         makeAncestors();
     }
 
@@ -160,6 +168,7 @@ public class ActorRef implements Serializable {
         this.name = name;
         this.host = context.hostContext;
         this.actor = actor;
+        actorSystemConnectionManager = context.system.actorSystemConnectionManager;
         makeAncestors();
     }
 
@@ -172,7 +181,7 @@ public class ActorRef implements Serializable {
     public boolean tell(Serializable message, ActorRef sender) {
         boolean success = true;
 
-        // log.trace("Delivering {} to {} mailbox from {}", message, this, sender);
+        log.trace("{} delivery of {} to {} mailbox from {}", (mailBox != null) ? "Local":"Remote", message, this, sender);
 
         try {
             SentMessage sentMessage;
@@ -184,31 +193,32 @@ public class ActorRef implements Serializable {
             if (isDeadLetter) {
                 log.trace("{} is dead letter mailbox", this);
                 message = new DeadLetter(message, path, sender);
+                success = false;
             }
 
-            sentMessage = new SentMessage(message, sender);
-
             if (mailBox != null) { // Local
+                sentMessage = new SentMessage(message, sender);
                 if (! mailBox.dead) {
-                    // log.trace("Adding:{} to mailbox:{}  queue presize={}", message, this, mailBox.queue.size());
-                    mailBox.queue.add(sentMessage);
+                    // log.info("Sending local {} to {} from {}", sentMessage.message(), this, sentMessage.sender());
+                    mailBox.queue.offer(sentMessage);
+                    LockSupport.unpark(mailboxThread);
                 }
                 else {
-                    log.trace("{} mailbox is dead .. restarted ??", this);
+                    log.warn("{} mailbox is dead .. restarted ??", this);
                     if (!PersistentActor.isInShutdown()) { // May be in shutdown but false -- need to fix this
                         ActorRef deadLetterRef = context.getDeadLetterActor();
                         if (deadLetterRef != null && !deadLetterRef.mailBox.dead) { // We may be globally stopping
-                            deadLetterRef.tell(new DeadLetter(sentMessage.message, path, sender), null);
+                            deadLetterRef.tell(new DeadLetter(sentMessage.message(), path, sender), null);
                         }
-                    }
+                    } else
+                        log.info("{} was in shutdown", this);
                 }
             }
             else {
                 if (! path.contains(":"))
                     path = host + path;
                 try {
-                    sentMessage.remotePath = path;
-                    sendMessage(sentMessage, path);
+                    sendRemoteMessage(new SentMessage(message, sender, path));
                 }
                 catch (InterruptedException ie) {
                     log.error("Could not get socket to {}: Interrupted", path);
@@ -235,34 +245,41 @@ public class ActorRef implements Serializable {
     /*
         Try to send message. Throw exception if fail
      */
-    private void sendMessage(SentMessage sentMessage, String path) throws Exception {
-        WrappedTCPObjectSocket wrappedTCPObjectSocket = null;
+    private void sendRemoteMessage(SentMessage sentMessage) throws Exception {
         TCPObjectSocket socket;
         URI uri = new URI(path);
         Exception lastException = null;
+        ActorRef sender = sentMessage.sender();
+        int senderId = null != sender ? sender.hashCode() : ActorRef.NullActorRefID;
+        int targetId = sentMessage.remotePath().hashCode();
 
-        for (int i = 0; i < 10; i++) {
+        // log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
+
+        for (int i = 0; i < 5; i++) {
             try {
-                wrappedTCPObjectSocket = context.system.getSocket(uri);
-                socket = wrappedTCPObjectSocket.tcpObjectSocket;
-                socket.writeObject(sentMessage);
-                socket.flush();
-                // Expecting app level "ACK" from server
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getSocket().getInputStream()));
-                reader.readLine();
+                socket = actorSystemConnectionManager.getSocket(sender, senderId, targetId, uri);
+                socket.send(sentMessage);
                 return;
+            }
+            catch (InterruptedException | ClosedByInterruptException ie) {
+                log.error("Could not send message {} to {}: Interrupted ", sentMessage.message(), path);
+                lastException = ie;
+                try { Thread.sleep(1000); }
+                    catch (InterruptedException e) { Thread.sleep(1000); }
+                // i = 5;
+            }
+            catch (RemotePayloadSizeException re) {
+                log.error("Could not send message {} to {}: Payload size error" , sentMessage.message(), path);
+                lastException = re;
+                i = 5;
             }
             catch (Exception e) {
                 lastException = e;
-                context.system.flushPool(uri);
-                Thread.sleep(5000L);
+                Thread.sleep(10L);
             }
-            finally {
-                if (null != wrappedTCPObjectSocket)
-                    context.system.returnSocket(wrappedTCPObjectSocket);
-            }
+            actorSystemConnectionManager.returnSocket(senderId, targetId);
         }
-        throw lastException;
+        throw new RuntimeException("Could not tell(%s) %s".formatted(uri, lastException.getMessage()));
     }
 
     /**
@@ -303,16 +320,6 @@ public class ActorRef implements Serializable {
     }
 
     /**
-     * Make sure this ActorRef contains the host in its path
-     * @return itself with possibly modified path
-     */
-    ActorRef remotify() {
-        if (! path.contains(":"))
-            path = host + path;
-        return this;
-    }
-
-    /**
      * Adds my Actor to those going to be informed (via a Terminated message) when the Watchee stops.
      * @param watchee he who is watched
      */
@@ -344,10 +351,10 @@ public class ActorRef implements Serializable {
      */
     public void waitForDeath() throws Exception {
         try {
-            if (null == thread) {
+            if (null == mailboxThread) {
                 throw new Exception("%s is remote. Cannot waitForDeath on remote Actors".formatted(path));
             }
-            thread.join();
+            mailboxThread.join();
         }
         catch (InterruptedException e) {
             log.error("%s waitForDeath was interrupted !!".formatted(path));
@@ -381,25 +388,36 @@ public class ActorRef implements Serializable {
         return ancestors[ancestors.length - 4];
     }
 
-    /**
-     * Put the stashed messages at the *front* of the mailbox
-     * @param stash
-     */
-    public void unstashAll(List<SentMessage> stash) {
-        Object[] newMsgs;
-
-        mailBox.queue.takeLock.lock();
-        mailBox.queue.putLock.lock();
-
-        newMsgs = mailBox.queue.toArray();
-        mailBox.queue.clear();
-        mailBox.queue.addAll(stash);
-
-        for (Object o : newMsgs) {
-            mailBox.queue.add((SentMessage) o);
+    @Override
+    public int hashCode() {
+        if (mailBox != null)
+            return mailBox.hashCode();
+        else {
+            // Hashcode is always hash of full path
+            if (path.contains(":"))
+                return path.hashCode();
+            else
+                return (host + path).hashCode();
         }
-        mailBox.queue.takeLock.unlock();
-        mailBox.queue.putLock.unlock();
+    }
+
+    public ActorRef remotify() {
+        if (host.contains(":") && !path.contains(":"))
+            path = host + path;
+        return this;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (mailBox != null)
+            return super.equals(o);
+        else
+        {
+            if (!(o instanceof ActorRef))
+                return false;
+            else
+                return path.equals(((ActorRef)o).path);
+        }
     }
 
     private void makeAncestors() {

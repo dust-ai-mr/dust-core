@@ -5,14 +5,16 @@ import com.mentalresonance.dust.core.actors.ActorBehavior;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.GetChildrenMsg;
+import com.mentalresonance.dust.core.msgs.ReapMsg;
 import com.mentalresonance.dust.core.msgs.StartMsg;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-import static com.mentalresonance.dust.core.actors.lib.ReaperActor.ReapMsg.ReapResponseMsg;
+import static com.mentalresonance.dust.core.msgs.ReapMsg.ReapResponseMsg;
 
 /**
  * A common pattern. Reap a message to all the parent's children, transform the results
@@ -74,16 +76,13 @@ public class ReapTransformServiceActor extends Actor {
                     host.tell(new GetChildrenMsg(), self);
                     break;
 
-                /*
-                 Warning. Common usage pattern is to invoke this Actor on the host itself. But this means self is now
-                 a child of host which would result in an attempt to reap self .... so filter me out.
-                 */
                 case GetChildrenMsg msg:
-                    List<ActorRef> childs = msg.getChildren().stream().filter(child -> child != self).toList();
+                    List<ActorRef> children = new ArrayList<>(msg.getChildren());
+                    children.remove(self);
                     actorOf(ReaperActor.props(timeoutMs)).tell(
-                        new ReaperActor.ReapMsg(
+                        new ReapMsg(
                             reapingClz,
-                            childs,
+                            children,
                             ReapResponseMsg.class
                         ),
                         self
@@ -95,7 +94,9 @@ public class ReapTransformServiceActor extends Actor {
                     stopSelf();
                     break;
 
-                default: super.createBehavior().onMessage(message);
+                default:
+                    log.warn("ReapTransformServiceActor: stashing unexpected message {}", message);
+                    stash(message);
             }
         };
     }

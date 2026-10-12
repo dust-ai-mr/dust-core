@@ -2,6 +2,7 @@ import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
 import com.mentalresonance.dust.core.actors.ActorSystem
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
@@ -57,14 +58,16 @@ import com.mentalresonance.dust.core.msgs.StartMsg
 			}
 		}
 
-		def "Dead Letter"() {
+		def "Clean Shutdown"() {
 			when:
-				ActorSystem system = new ActorSystem("CleanShutdown")
+				log.info ">>>>>>>>>>>>>>>> Clean Shutdown"
+				ActorSystem system = new ActorSystemBuilder().name("CleanShutdown").build()
 				ActorRef stopper = system.context.actorOf( Stopper.props())
 				stopper.tell(new StartMsg(), null)
 				Thread.sleep(2000)
 				system.context.stop(stopper)
 				Thread.sleep(1000)
+				system.stop()
 			then:
 				success
 		}

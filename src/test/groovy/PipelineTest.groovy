@@ -1,6 +1,7 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.actors.lib.PipelineActor
 import com.mentalresonance.dust.core.actors.ActorSystem
@@ -14,6 +15,7 @@ import spock.lang.Specification
  * after the final stage processes it.
  */
 @CompileStatic
+@Slf4j
 class PipelineTest extends Specification {
 
 	@Slf4j
@@ -55,7 +57,8 @@ class PipelineTest extends Specification {
 	def "Pipeline"() {
 
 		when:
-			ActorSystem system = new ActorSystem("Test")
+			log.info ">>>>>>>>>>> Pipeline"
+			ActorSystem system = new ActorSystemBuilder().name("Test").build()
 			Add1Msg msg = new Add1Msg()
 			List<Props> props = []
 			List<String> names = []
@@ -74,7 +77,7 @@ class PipelineTest extends Specification {
 			Thread.sleep(500L)
 			counter = msg.counter
 			system.stop()
-					then:
+		then:
 			counter == 4
 	}
 

@@ -19,8 +19,6 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
@@ -28,22 +26,7 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-@Getter
-public class StartMsg implements Serializable {
+public record StartMsg(Serializable msg) implements Serializable {
 
-    /**
-     * Handy (optional) message
-     */
-    final Serializable msg;
-
-    /**
-     * Constructor
-     */
-    public StartMsg() { msg = null; }
-
-    /**
-     * Constructor
-     * @param msg wrapped msg
-     */
-    public StartMsg(Serializable msg) { this.msg = msg; }
+    public StartMsg() { this(null); }
 }

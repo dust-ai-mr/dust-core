@@ -19,23 +19,21 @@
 
 package com.mentalresonance.dust.core.actors;
 
-import com.mentalresonance.dust.core.net.CoreTCPObjectServer;
+import com.mentalresonance.dust.core.msgs.DeadLetter;
+import com.mentalresonance.dust.core.net.TCPObjectServer;
 import com.mentalresonance.dust.core.services.PersistenceService;
-import com.mentalresonance.dust.core.services.SerializationService;
-import com.mentalresonance.dust.core.system.ActorSystemConnectionManager;
-import com.mentalresonance.dust.core.system.ActorSystemConnectionManager.WrappedTCPObjectSocket;
+import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.system.GuardianActor;
+import com.mentalresonance.dust.core.system.SystemActor;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.nustaq.net.TCPObjectServer;
-import org.nustaq.net.TCPObjectSocket;
-
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
-import java.net.URI;
+import java.net.ServerSocket;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -58,10 +56,10 @@ public class ActorSystem {
     final
     String host;
 
-    final int systemLength; // For trimming system off path
-
     @Getter
     ActorContext context;
+
+    List<Class<?>> registeredClasses;
 
     private ActorRef guardianRef;
 
@@ -78,120 +76,60 @@ public class ActorSystem {
     @Setter
     Runnable stopping = null;
 
-    private CoreTCPObjectServer server = null;
+    private TCPObjectServer server = null;
 
     /**
      * Manage connection pool to remote Actor Systems
      */
-    final ActorSystemConnectionManager actorSystemConnectionManager;
+    ActorSystemConnectionManager actorSystemConnectionManager;
 
     /**
      * We might stop the ActorSystem but then get a shutdown message (via the shutdown hook) at a later data
      * (e.g. during tests) so we use isStopped to determined that we do actually think we have stopped
      * and do not try again.
      */
+    @Getter
     private boolean isStopped = false;
 
     /**
-     * Create local only Actor system
-     *
-     * @param name - ActorSystem name
-     * @throws ActorInstantiationException creating core service Actors
-     * @throws IOException creating core service Actors
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     */
-    public ActorSystem(String name)
-            throws ActorInstantiationException, IOException, InvocationTargetException,
-            NoSuchMethodException, InstantiationException, IllegalAccessException {
-        this(name, null, true);
-    }
-
-    /**
-     * Create local only Actor system
-     *
-     * @param name           - actorSystem name
-     * @param logDeadLetters - if tru then dead letter deliveries are logged
-     * @throws ActorInstantiationException creating core service Actors
-     * @throws IOException creating core service Actors
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     */
-    public ActorSystem(String name, boolean logDeadLetters)
-            throws ActorInstantiationException, IOException, InvocationTargetException,
-            NoSuchMethodException, InstantiationException, IllegalAccessException {
-        this(name, null, logDeadLetters);
-    }
-
-    /**
      * Create remoting Actor system with name on port
-     *
-     * @param name unique (on this host) actor name
-     * @param port on this port
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     * @throws ActorInstantiationException creating core service Actors
-     */
-    public ActorSystem(String name, Integer port)
-            throws InvocationTargetException, NoSuchMethodException, InstantiationException,
-            IllegalAccessException, ActorInstantiationException {
-
-        this(name, port, true);
-    }
-
-    /**
-     * Create remoting Actor system with name on port
-     *
+     * @param host
      * @param name           unique (on this host) actor name
      * @param port           on this port
      * @param logDeadLetters if true log dead letters
+     * @param maxOutgoingConnection max # of outgoing connection
+     * @param maxIncomingConnection max # of incoming connection
      * @throws InvocationTargetException creating core service Actors
      * @throws NoSuchMethodException creating core service Actors
      * @throws InstantiationException creating core service Actors
      * @throws IllegalAccessException creating core service Actors
      * @throws ActorInstantiationException creating core service Actors
      */
-    public ActorSystem(String name, Integer port, boolean logDeadLetters)
-            throws InvocationTargetException, NoSuchMethodException, InstantiationException,
-            IllegalAccessException, ActorInstantiationException {
-
-        this.host = "localhost";
-        this.name = name;
-        this.port = port;
-        systemLength = name.length() + 1;
-        actorSystemConnectionManager = new ActorSystemConnectionManager();
-        init(logDeadLetters);
-        log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
-    }
-
-    /**
-     * Create remoting Actor system with name on port
-     * @param host           host address for remoting
-     * @param name           unique (on this host) actor name
-     * @param port           on this port
-     * @param logDeadLetters if true log dead letters
-     * @throws InvocationTargetException creating core service Actors
-     * @throws NoSuchMethodException creating core service Actors
-     * @throws InstantiationException creating core service Actors
-     * @throws IllegalAccessException creating core service Actors
-     * @throws ActorInstantiationException creating core service Actors
-     */
-    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters)
-        throws InvocationTargetException, NoSuchMethodException, InstantiationException,
+    public ActorSystem(String host, String name, Integer port, boolean logDeadLetters,
+                       int maxOutgoingConnection, int maxIncomingConnection, List<Class<?>> registeredClasses)
+        throws InvocationTargetException, NoSuchMethodException, InstantiationException, IOException,
         IllegalAccessException, ActorInstantiationException {
 
         this.host = host;
         this.name = name;
         this.port = port;
-        systemLength = name.length() + 1;
-        actorSystemConnectionManager = new ActorSystemConnectionManager();
+
         init(logDeadLetters);
+
+        if (null != port) {
+            try {
+                this.registeredClasses = registeredClasses;
+                actorSystemConnectionManager = new ActorSystemConnectionManager(maxOutgoingConnection, registeredClasses);
+                // TEst to see if it is use before leaving this thread
+                ServerSocket ss = new ServerSocket(port);
+                ss.close();
+                context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
+                haveStopped = runServer(port, actorSystemConnectionManager, this, maxIncomingConnection);
+            } catch (IOException e) {
+                log.error(String.format("SEVERE: Cannot start server on host %s port %d [%s]", host, port, e.getMessage()));
+                throw e;
+            }
+        }
         log.info("Started ActorSystem: " + name + " on port " + port + " host: " + host);
     }
 
@@ -202,7 +140,7 @@ public class ActorSystem {
      * @return Guardian Actor mailbox thread
      */
     public Thread systemThread() {
-        return guardianRef.thread;
+        return guardianRef.mailboxThread;
     }
 
     private void init(boolean logDeadLetters)
@@ -218,20 +156,11 @@ public class ActorSystem {
         guardian.actor.setContext(context);
         guardian.actor.init(logDeadLetters);
 
-        if (null != port) {
-            try {
-                context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
-                haveStopped = runServer(port, actorSystemConnectionManager);
-            } catch (IOException e) {
-                log.error(String.format("Cannot start server on host %s port %d", host, port));
-            }
-        }
-
         // Shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(
                 () -> {
+                    System.out.println("GOT SHUTDOWN - stopping !");
                     if (!isStopped) {
-                        log.warn("GOT SHUTDOWN - stopping !");
                         stop();
                     }
                 }
@@ -241,12 +170,20 @@ public class ActorSystem {
     private Guardian startGuardian(ActorRef ref) {
 
         Actor actor = guardianRef.actor;
+        java.util.concurrent.CountDownLatch startupLatch = new java.util.concurrent.CountDownLatch(1);
+
         ref.mailBox = new Actor.MailBox();
-        ref.thread = Thread.startVirtualThread(actor);
-        ref.thread.setName("GuardianActor");
+        ref.mailboxThread = Thread.ofVirtual().start(() -> {
+            // Wait until the parent thread finishes setting up the 'ref'
+            try {
+                startupLatch.await();
+            } catch (Exception e) {}
+            actor.run();
+        });
+        startupLatch.countDown();
+        ref.mailboxThread.setName("GuardianActor");
         actor.setParent(null);
         actor.setSelf(ref);
-
         return new Guardian(ref, (GuardianActor) actor);
     }
 
@@ -259,7 +196,7 @@ public class ActorSystem {
      * @param inShutdown flag to indicate we are in clean shutdown. PersistentActors should not delete their state. If
      * false then they probably will delete their state
      */
-    public void stop(boolean inShutdown) {
+    public boolean stop(boolean inShutdown) {
 
         isStopping = true;
 
@@ -271,7 +208,6 @@ public class ActorSystem {
             try {
                 server.stop();
                 haveStopped.get(5, TimeUnit.SECONDS);
-                actorSystemConnectionManager.shutdown();
                 log.info("Server shut down");
             }
             catch (Exception e) {
@@ -295,12 +231,13 @@ public class ActorSystem {
             stopping.run();
         }
         log.info("Stopped");
+        return true;
     }
 
     /**
      * Default stop. inShutdown is true so Actors will keep their state for next time
      */
-    public void stop() { stop(true); }
+    public boolean stop() { return stop(true); }
 
     /**
      * Run server on port with context /<actor-system-name>
@@ -310,97 +247,87 @@ public class ActorSystem {
      * @return Future which completes when server stops
      * @throws IOException
      */
-    CompletableFuture<Boolean> runServer(int port, ActorSystemConnectionManager actorSystemConnectionManager) throws IOException {
+    CompletableFuture<Boolean> runServer(
+        int port,
+        ActorSystemConnectionManager actorSystemConnectionManager,
+        ActorSystem actorSystem,
+        int maxIncomingConnections
+    ) throws IOException
+    {
         CompletableFuture<Boolean> haveStopped = new CompletableFuture<>();
 
-        server = new CoreTCPObjectServer(
-                SerializationService.getFstConfiguration(),
-                port,
-                actorSystemConnectionManager,
-                haveStopped
+        server = new TCPObjectServer(
+            port,
+            this,
+            haveStopped,
+            maxIncomingConnections,
+            registeredClasses
         );
 
         this.port = port;
-
-        server.start(new TCPObjectServer.NewClientListener() {
-
-            @Override
-            public void connectionAccepted(TCPObjectSocket client) {
-                boolean running = true;
-                try {
-                    while (running) // Sit on the opened connection
-                    {
-                        SentMessage msg = (SentMessage) client.readObject();
-                        /*
-                         * We are either stopping the server or just closing this connection.
-                         * (Which it is depends on the server terminated flag)
-                         */
-                        if (null == msg) {
-                            actorSystemConnectionManager.closeRemoteSocket(client.getSocket());
-                            running = false;
-                        }
-                        else {
-                            try {
-                                /*
-                                 * path is /system/...
-                                 */
-                                String path = new URI(msg.remotePath).getPath().substring(systemLength);
-                                ActorRef sender = (null != msg.sender) ? msg.sender.remotify() : null;
-                                ActorRef target = context.actorSelection(path);
-
-                                log.trace("ActorSystem received: " + msg.message + " from " + sender + " to be sent to " + target);
-                                if (null == target) {
-                                    target = context.getDeadLetterActor();
-                                    target.setIsDeadLetter(true);
-                                }
-                                if (null != sender) {
-                                    sender = context.actorSelection(sender.path);
-                                }
-                                target.tell(msg.message, sender);
-                                PrintWriter writer = new PrintWriter(client.getSocket().getOutputStream(), true);
-                                writer.println("ACK"); // App level confirm to serialize messages to same Actor
-                                writer.flush();
-
-                            } catch (Exception e) {
-                                log.error("Error in server(): {}", e.getMessage());
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("Error in outer server(): {}", e.getMessage());
-                }
-            }
-        });
+        server.start(actorSystem);
         return haveStopped;
     }
 
-    /**
-     * Get a connection to the ActorSystem at the remote path
-     *
-     * @param uri for remote system
-     * @return wrapped Connection
-     * @throws IOException on io issues
-     * @throws InterruptedException if interrupted
-     */
-    public WrappedTCPObjectSocket getSocket(URI uri) throws IOException, InterruptedException {
-        return actorSystemConnectionManager.getSocket(uri);
+    private static String substringAtNth(String str, char target, int n) {
+        if (str == null || n <= 0) return str;
+
+        int index = -1;
+        for (int i = 0; i < n; i++) {
+            index = str.indexOf(target, index + 1);
+            if (index == -1) return ""; // Or throw exception if n matches are required
+        }
+
+        return str.substring(index);
     }
 
     /**
-     * Returns wrapped socket to the pool
-     *
-     * @param objectSocket to return to pool
+     * Handle a remote message.
+     * @param msg
      */
-    public void returnSocket(WrappedTCPObjectSocket objectSocket) {
-        actorSystemConnectionManager.returnSocket(objectSocket);
-    }
+    public void connectionAccepted(SentMessage msg) {
+        Object o = null;
 
-    /**
-     * Something has gone wrong. Try to close all connections to Actor system
-     * defined by URI.
-     */
-    public void flushPool(URI uri) throws Exception {
-        actorSystemConnectionManager.flushPool(uri);
+        if (null == msg) return;
+        try {
+            /*
+             * path is /system/...
+             */
+            String path = substringAtNth(msg.remotePath(), '/', 4);
+            ActorRef sender = (null != msg.sender()) ? msg.sender() : null;
+            ActorRef target = context.actorSelection(path);
+
+            if (null == target) {
+                target = context.getDeadLetterActor();
+                target.setIsDeadLetter(true);
+            }
+            if (null != sender) {
+                // Sender has everything but a context and connection manager to work with
+                sender.context = context;
+                assert(actorSystemConnectionManager != null);
+                sender.setActorSystemConnectionManager(actorSystemConnectionManager);
+            }
+
+            Serializable message = msg.message();
+
+            // Likewise ActorRefs
+            if (message instanceof ActorRef) {
+                ((ActorRef)message).context = context;
+                ((ActorRef)message).setActorSystemConnectionManager(actorSystemConnectionManager);
+            }
+            if (target.isDeadLetter) {
+                // The target is a dead letter on this side ... make it a dead letter on the client side
+                DeadLetter dl = new DeadLetter(message, msg.remotePath(), sender);
+                context.actorSelection(sender.host + "/system/" + SystemActor.DEAD_LETTERS).tell(dl, sender);
+            }
+            else {
+                //log.info("Sending {} from {} to {}", message, sender, target);
+                target.tell(message, sender);
+            }
+        }
+        catch (Exception e) {
+            log.error("SEVERE: Error in server(): {}", e.getMessage());
+        }
     }
 
     private static class Guardian {
@@ -411,5 +338,10 @@ public class ActorSystem {
             this.ref = ref;
             this.actor = actor;
         }
+    }
+
+    @Override
+    public String toString() {
+        return "ActorSystem: " + name;
     }
 }

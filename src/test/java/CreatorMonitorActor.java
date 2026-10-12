@@ -1,10 +1,5 @@
-import com.mentalresonance.dust.core.actors.Actor;
-import com.mentalresonance.dust.core.actors.ActorBehavior;
-import com.mentalresonance.dust.core.actors.Cancellable;
-import com.mentalresonance.dust.core.actors.Props;
+import com.mentalresonance.dust.core.actors.*;
 import com.mentalresonance.dust.core.system.exceptions.ActorInstantiationException;
-
-import java.io.Serializable;
 
 /**
  * PArt of performance Tests
@@ -12,7 +7,7 @@ import java.io.Serializable;
 public class CreatorMonitorActor extends Actor {
 
     Integer number, size;
-    Long t1;
+    static Long tStart, tCreated, tStopped;
     Cancellable doit;
 
     public static Props props(Integer number, Integer size) {
@@ -38,30 +33,15 @@ public class CreatorMonitorActor extends Actor {
 
     @Override
     public void preStart() throws ActorInstantiationException {
-        t1 = System.currentTimeMillis();
+        tStart = System.currentTimeMillis();
         for (int i = 0; i < number; ++i) {
-            actorOf(CreatorActor.props(size));
+            actorOf(CreatorActor.props(size), "group-" + i);
         }
-        doit = scheduleIn( new CheckIfDoneMsg(), 10L);
+        tCreated = System.currentTimeMillis();
+        tellSelf(new PoisonPill());
     }
 
-    @Override
-    public void postStop() { doit.cancel(); }
-
-
-    protected ActorBehavior createBehavior() {
-        return message -> {
-            switch(message) {
-                case CheckIfDoneMsg msg -> {
-                    if (0 == getChildren().size()) {
-                        stopSelf();
-                    } else
-                        doit = scheduleIn(msg, 10L);
-                }
-                default ->  println(message.toString());
-            }
-        };
+    public void postStop() {
+        tStopped = System.currentTimeMillis();
     }
-
-    static class CheckIfDoneMsg implements Serializable {}
 }

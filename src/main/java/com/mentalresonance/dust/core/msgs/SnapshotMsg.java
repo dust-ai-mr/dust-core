@@ -30,18 +30,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-public class SnapshotMsg implements Serializable {
-    /**
-     * The persisted snapshot
-     */
-    @Getter
-    final Serializable snapshot;
-
-    /**
-     * Constructor
-     * @param snapshot recovered data
-     */
-    public SnapshotMsg(Serializable snapshot) {
-        this.snapshot = snapshot;
-    }
-}
+public record SnapshotMsg(Serializable snapshot) implements Serializable {}

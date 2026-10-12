@@ -33,10 +33,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.Semaphore;
 
 /**
- * Convenient persistence mechanism. Pros include the fact that Gson is forgiving if the class being deserialized
- * has changed (which often happens during development) as opposed to FST deserialization. Cons: GSon <b>requires</b>
- * a class be given during deserialization, so if it is used the persistent Actor must override getSnapshotClass()
- *
+ * Convenient persistence mechanism.
  * @author alanl
  */
 @Slf4j

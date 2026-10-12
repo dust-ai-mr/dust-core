@@ -19,8 +19,6 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
@@ -28,18 +26,4 @@ import java.io.Serializable;
  *
  *  @author alanl
  */
-@Getter
-public class CreatedChildMsg implements Serializable {
-    /**
-     * Name of newly created child
-     */
-    final String name;
-
-    /**
-     * Constructor
-     * @param name of created child
-     */
-    public CreatedChildMsg(String name) {
-        this.name = name;
-    }
-}
+public record CreatedChildMsg(String name) implements Serializable {}

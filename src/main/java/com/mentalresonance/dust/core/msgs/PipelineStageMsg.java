@@ -19,33 +19,10 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
  * Msg to be sent to a pipeline. If it has the named stage the PieplineStage message
  * is unwrapped and msg is passed on to the stage (as though from sender)
  */
-@Getter
-public class PipelineStageMsg implements Serializable {
-    /**
-     * Name of the target stage
-     */
-    final String stage;
-    /**
-     * msg to be sent to target stage
-     */
-    final Serializable msg;
-
-    /**
-     * Constructor
-     * @param stage name
-     * @param msg to be sent to stage
-     */
-    public PipelineStageMsg(String stage, Serializable msg) {
-        this.stage = stage;
-        this.msg = msg;
-    }
-
-}
+public record PipelineStageMsg(String stage, Serializable msg) implements Serializable {}

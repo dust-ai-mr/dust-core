@@ -21,6 +21,7 @@ package com.mentalresonance.dust.core.actors.lib;
 
 import com.mentalresonance.dust.core.actors.Actor;
 import com.mentalresonance.dust.core.actors.ActorBehavior;
+import com.mentalresonance.dust.core.actors.ActorRef;
 import com.mentalresonance.dust.core.actors.Props;
 import com.mentalresonance.dust.core.msgs.CompletionRequestMsg;
 import com.mentalresonance.dust.core.msgs.ReturnableMsg;
@@ -42,6 +43,8 @@ public class CompletionServiceActor extends Actor {
 
     CompletableFuture<Object> future;
     Long maxTime;
+    CompletionRequestMsg originalMsg;
+    ActorRef originalSender;
 
     /**
      * Construct Actor's Props
@@ -70,7 +73,9 @@ public class CompletionServiceActor extends Actor {
     @Override
     protected void dying() {
         future.complete(null);
-        super.dying();
+        log.warn(
+            "Completion dying() via dead man's handle. Was processing %s from %s".formatted(originalMsg.getPassThroughMsg(), originalSender)
+        );
     }
 
     /**
@@ -80,7 +85,11 @@ public class CompletionServiceActor extends Actor {
     @Override
     protected ActorBehavior createBehavior() {
         return message -> {
-            if (Objects.requireNonNull(message) instanceof CompletionRequestMsg msg) {;
+            if (Objects.requireNonNull(message) instanceof CompletionRequestMsg msg) {
+
+                originalMsg = msg;
+                originalSender = sender;
+
                 Serializable passThrough = msg.getPassThroughMsg();
                 log.trace("{} Received CompletionRequestMsg: {} from {} to {}", self.path, passThrough, sender, msg.target);
 

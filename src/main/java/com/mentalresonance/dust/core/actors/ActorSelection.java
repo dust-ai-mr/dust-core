@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 
 /**
- * Container for location information for an Actor itentified by a path
+ * Container for location information for an Actor identified by a path
  */
 @Slf4j
 public class ActorSelection implements Serializable {
@@ -48,12 +48,6 @@ public class ActorSelection implements Serializable {
      */
     @Setter
     boolean remote = false;
-
-    /**
-     * Actor known to be dead ?
-     */
-    @Setter
-    boolean dead = false;
 
     /**
      * ActorRef for this selection
@@ -78,20 +72,17 @@ public class ActorSelection implements Serializable {
      * @throws ActorSelectionException all other failures with selection
      * @throws InterruptedException if target is interrupted
      */
-    public void tell(Serializable msg, ActorRef sender) throws ActorSelectionException, InterruptedException {
-        if (dead) {
-            context.deadletterActor.tell(new DeadLetter(msg, path, sender), sender);
-        }
-        else if (remote) {
-            getRef().tell(msg, sender);
+    public boolean tell(Serializable msg, ActorRef sender) throws ActorSelectionException, InterruptedException {
+        if (remote) {
+            return getRef().tell(msg, sender);
         }
         else if (! path.endsWith("*")) {
-            getRef().tell(msg, sender);
+            return getRef().tell(msg, sender);
         }
         else { // We are a broadcast
             path = path.substring(0, path.length() - 2);
             parent = context.actorSelection(path);
-            parent.tell(new Actor._ChildProxyMsg(msg), sender);
+            return parent.tell(new Actor._ChildProxyMsg(msg), sender);
         }
     }
 

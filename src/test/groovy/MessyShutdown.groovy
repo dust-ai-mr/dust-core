@@ -22,6 +22,10 @@ import spock.lang.Specification
  *
  */
 
+/*
+    Parent Actor dies and so child will - but parent will have passed its exception on to the child so it can
+    see it ...
+ */
 @Slf4j
 class MessyShutdown extends Specification {
 
@@ -74,13 +78,15 @@ class MessyShutdown extends Specification {
         }
     }
 
-    def "Dead Letter"() {
+    def "Messy Shutdown"() {
         when:
-            ActorSystem system = new ActorSystem("MessyShutdown")
+            log.info ">>>>>>>>>>>>> MessyShutdown"
+            ActorSystem system = new ActorSystemBuilder().name("MessyShutdown").build()
             ActorRef stopper = system.context.actorOf( Parent.props())
 
             stopper.tell(new StartMsg(), null)
             stopper.waitForDeath()
+            system.stop()
         then:
             success
     }

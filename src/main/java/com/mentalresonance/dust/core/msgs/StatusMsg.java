@@ -19,41 +19,19 @@
 
 package com.mentalresonance.dust.core.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
  * A simple class for delivering generic status. Useful when a 'client' Actor needs to know a 'server'
  * has fulfilled the request for synchronization or other reasons
  */
-@Getter
-public class StatusMsg implements Serializable {
-    /**
-     * Optional 'marker' so request/response can be aligned
-     */
-    Serializable tag = null;
-    /**
-     * true or not
-     */
-    boolean success;
-    /**
-     * Optional accompanying message
-     */
-    String message = null;
+public record StatusMsg(boolean success, String message, Serializable tag) implements Serializable {
 
     public StatusMsg(boolean success) {
-        this.success = success;
+        this(success, null, null);
     }
 
     public StatusMsg(boolean success, String message) {
-        this.success = success;
-        this.message = message;
-    }
-
-    public StatusMsg(boolean success, String message, Serializable tag) {
-        this.success = success;
-        this.message = message;
-        this.tag = tag;
+        this(success, message, null);
     }
 }

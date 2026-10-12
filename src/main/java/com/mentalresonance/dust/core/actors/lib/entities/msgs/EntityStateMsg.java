@@ -19,8 +19,6 @@
 
 package com.mentalresonance.dust.core.actors.lib.entities.msgs;
 
-import lombok.Getter;
-
 import java.io.Serializable;
 
 /**
@@ -29,16 +27,4 @@ import java.io.Serializable;
  *
  * @author alanl
  */
-@Getter
-public class EntityStateMsg<T> implements Serializable {
-    /**
-     * Recovered state
-     */
-    final T state;
-
-    /**
-     * Message to recover Entity state
-     * @param state the state to be recovered
-     */
-    public EntityStateMsg(T state) { this.state = state; }
-}
+public record EntityStateMsg<T>(T state) implements Serializable {}
