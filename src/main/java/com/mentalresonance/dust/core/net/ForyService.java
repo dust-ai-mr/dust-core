@@ -62,17 +62,16 @@ public class ForyService {
             .build();
 
 
-        fory.register(ActorRef.class);
-        fory.register(SentMessage.class);
-        fory.register(DeadLetter.class);
-        fory.register(ReturnableMsg.class);
-        fory.register(CreateChildMsg.class);
-        fory.register(GetStateMsg.class);
-        fory.register(GetChildrenMsg.class);
-        fory.register(PingMsg.class);
-        fory.register(PoisonPill.class);
-        fory.register(LinkedHashMap.class);
-        fory.register(Terminated.class);
+        fory.register(ActorRef.class, 100);
+        fory.register(SentMessage.class, 101);
+        fory.register(DeadLetter.class, 102);
+        fory.register(ReturnableMsg.class, 103);
+        fory.register(CreateChildMsg.class, 104);
+        fory.register(GetStateMsg.class, 105);
+        fory.register(GetChildrenMsg.class, 106);
+        fory.register(PingMsg.class, 107);
+        fory.register(PoisonPill.class, 108);
+        fory.register(Terminated.class, 109);
 
 
         for(Class<?> clazz : classes) {

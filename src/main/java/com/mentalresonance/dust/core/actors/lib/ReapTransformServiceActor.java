@@ -94,7 +94,9 @@ public class ReapTransformServiceActor extends Actor {
                     stopSelf();
                     break;
 
-                default: super.createBehavior().onMessage(message);
+                default:
+                    log.warn("ReapTransformServiceActor: stashing unexpected message {}", message);
+                    stash(message);
             }
         };
     }

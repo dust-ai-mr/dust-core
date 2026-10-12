@@ -65,7 +65,8 @@ public class TCPObjectSocket {
                 this.socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                 this.socketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                 return this;
-            } catch (IOException e) {
+            }
+            catch (IOException e) {
                 log.error("Failed to configure SocketChannel", e);
             }
         }

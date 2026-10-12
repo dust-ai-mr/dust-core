@@ -111,7 +111,7 @@ public class TCPObjectServer {
                         log.trace("{} Accepted connection from {}", this, client.getRemoteAddress());
                         TCPObjectSocket socket = workerSockets.poll(5, TimeUnit.SECONDS);
                         if (socket == null) {
-                            log.warn("Server saturated: No available worker sockets");
+                            log.warn("SEVERE: Server saturated: No available worker sockets");
                             client.close();
                             return;
                         }
@@ -133,8 +133,9 @@ public class TCPObjectServer {
                                 Thread wbThread = Thread.startVirtualThread(workerBee);
                                 workerBee.setThread(wbThread);
                                 return workerBee;
-                            } catch (Exception e) {
-                                log.error("Error creating worker bee for {}: {}", id, e.getMessage());
+                            }
+                            catch (Exception e) {
+                                log.error("SEVERE: Error creating worker bee for {}: {}", id, e.getMessage());
                                 returnSocket(socket);
                                 return DUMMY_WB;
                             }
@@ -250,8 +251,8 @@ public class TCPObjectServer {
                     break;
                 }
                 catch (Exception e) {
-                    log.error("WorkerBee error in run {}: {}", id, e.getMessage());
-                    break;
+                    log.error("SEVERE: WorkerBee error in run {}: {}", id, e.getMessage());
+                    // break;
                 }
             }
             if (actorSystem.isStopped())

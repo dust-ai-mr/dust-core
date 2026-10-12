@@ -126,7 +126,7 @@ public class ActorSystem {
                 context.hostContext = String.format("dust://%s:%d/%s", host, port, name);
                 haveStopped = runServer(port, actorSystemConnectionManager, this, maxIncomingConnection);
             } catch (IOException e) {
-                log.error(String.format("Cannot start server on host %s port %d [%s]", host, port, e.getMessage()));
+                log.error(String.format("SEVERE: Cannot start server on host %s port %d [%s]", host, port, e.getMessage()));
                 throw e;
             }
         }
@@ -326,7 +326,7 @@ public class ActorSystem {
             }
         }
         catch (Exception e) {
-            log.error("Error in server(): {}", e.getMessage());
+            log.error("SEVERE: Error in server(): {}", e.getMessage());
         }
     }
 

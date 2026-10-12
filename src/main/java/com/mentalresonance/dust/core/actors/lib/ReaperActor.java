@@ -118,6 +118,7 @@ public class ReaperActor extends Actor {
                     stopSelf();
                 }
                 default -> {
+                    log.trace("{} received reap response {} from {}", self.path, message, sender);
                     reapMsg.response.results.put(sender, message);
                     if (reapMsg.isComplete()) {
                         log.trace("{} reaping complete", self.path);

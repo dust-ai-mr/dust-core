@@ -193,6 +193,7 @@ public class ActorRef implements Serializable {
             if (isDeadLetter) {
                 log.trace("{} is dead letter mailbox", this);
                 message = new DeadLetter(message, path, sender);
+                success = false;
             }
 
             if (mailBox != null) { // Local

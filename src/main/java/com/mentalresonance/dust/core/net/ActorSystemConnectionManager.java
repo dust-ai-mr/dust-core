@@ -55,12 +55,13 @@ public class ActorSystemConnectionManager {
                 try {
                     socket.send(null);
                     socket.close();
-                } catch (IOException ie) {
+                }
+                catch (IOException ie) {
                     // Pipe may have been broken
                     socket.close();
                 }
                 catch (Exception e) {
-                    log.error("Error removing socket: {}", e.getMessage());
+                    log.error("SEVERE: Error removing socket: {}", e.getMessage());
                 }
 
                 freeSockets.offer(socket);
@@ -95,6 +96,7 @@ public class ActorSystemConnectionManager {
                             log.error("Failed to get free socket for {} -> {} [{}]", sender, uri, e.getMessage());
                             try { socket.close(); } catch (Exception ignored) {}
                             freeSockets.offer(socket);
+                            log.trace("Socket returned to free pool [Pool size={}]", freeSockets.size());
                             throw new RuntimeException(e);
                         }
                     }
@@ -129,8 +131,9 @@ public class ActorSystemConnectionManager {
                                 log.trace("Found socket to return: {}", oldestEntry.getKey());
                                 connections.invalidate(oldestEntry.getKey());
                                 connections.cleanUp(); // Make sure evictions are done
-                            } else {
-                                log.error("No sockets to return");
+                            }
+                            else {
+                                log.error("SEVERE: No sockets to return");
                             }
                         });
                     }
@@ -157,11 +160,11 @@ public class ActorSystemConnectionManager {
                 try {
                     Thread.sleep(500L);
                 } catch (Exception ex) {
-                    log.error("Sleep in getSocket was interrupted");
+                    log.error("SEVERE: Sleep in getSocket was interrupted");
                 }
             }
         }
-        log.warn("Cannot get connection to remote actor: {} {} {}", uri, key, lastException);
+        log.error("SEVERE: Cannot get connection to remote actor: {} {} {}", uri, key, lastException);
         // Socket is probably cached and damaged - return it to freepool where it will get cleaned up
         // Then let our caller retry
         connections.invalidate(key);

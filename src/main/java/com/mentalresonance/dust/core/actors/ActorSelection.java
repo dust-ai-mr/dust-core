@@ -72,17 +72,17 @@ public class ActorSelection implements Serializable {
      * @throws ActorSelectionException all other failures with selection
      * @throws InterruptedException if target is interrupted
      */
-    public void tell(Serializable msg, ActorRef sender) throws ActorSelectionException, InterruptedException {
+    public boolean tell(Serializable msg, ActorRef sender) throws ActorSelectionException, InterruptedException {
         if (remote) {
-            getRef().tell(msg, sender);
+            return getRef().tell(msg, sender);
         }
         else if (! path.endsWith("*")) {
-            getRef().tell(msg, sender);
+            return getRef().tell(msg, sender);
         }
         else { // We are a broadcast
             path = path.substring(0, path.length() - 2);
             parent = context.actorSelection(path);
-            parent.tell(new Actor._ChildProxyMsg(msg), sender);
+            return parent.tell(new Actor._ChildProxyMsg(msg), sender);
         }
     }
 
