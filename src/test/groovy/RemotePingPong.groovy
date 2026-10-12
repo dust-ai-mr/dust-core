@@ -1,12 +1,12 @@
 import com.mentalresonance.dust.core.actors.Actor
 import com.mentalresonance.dust.core.actors.ActorBehavior
 import com.mentalresonance.dust.core.actors.ActorRef
-import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import com.mentalresonance.dust.core.actors.Props
 import com.mentalresonance.dust.core.msgs.PingMsg
 import com.mentalresonance.dust.core.actors.ActorSystem
 import com.mentalresonance.dust.core.actors.lib.PingActor
 import com.mentalresonance.dust.core.msgs.Terminated
+import com.mentalresonance.dust.core.actors.ActorSystemBuilder
 import groovy.util.logging.Slf4j
 import spock.lang.Specification
 
@@ -71,21 +71,6 @@ class RemotePingPong extends Specification {
 	}
 	def "Remote Ping Ponger"() {
 		when:
-			ActorSystem system1 = new ActorSystem("RemotePingPong", 9098)
-			ActorSystem system2 = new ActorSystem("RemotePingPong2", 9099)
-
-			ActorRef ping, pong
-
-			system1.context.actorOf(PingActor.props(500000), 'ping3')
-			system2.context.actorOf(PingActor.props(500000), 'pong3')
-			// Give remote Actors time to come up
-			Thread.sleep(1000L)
-
-			ping = system1.context.actorSelection("dust://localhost:9098/RemotePingPong/user/ping3")
-			pong = system2.context.actorSelection("dust://localhost:9099/RemotePingPong2/user/pong3")
-			ping.tell(new PingMsg(), pong)
-			sleep(50000L) // Adjust ??
-
 			log.info ">>>>>>>>>>> Remote Ping Ponger"
 			me.context.actorOf(Runner.props()).waitForDeath()
 			me.stop()
