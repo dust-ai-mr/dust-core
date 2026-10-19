@@ -24,12 +24,10 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorSystem;
 import com.mentalresonance.dust.core.actors.SentMessage;
-import com.mentalresonance.dust.core.msgs.DeadLetter;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
-import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.channels.ClosedByInterruptException;
@@ -39,6 +37,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.nio.channels.AsynchronousCloseException;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.ClosedChannelException;
 
 /**
  * Runs a server to receive remote messages. Spawns a new virtual thread to handle a new connection but
@@ -77,7 +78,8 @@ public class TCPObjectServer {
             .maximumSize(maxIncomingConnections)
             .evictionListener((Long key, WorkerBee wb, RemovalCause cause) -> {
                 if (wb != null) {
-                    wb.getThread().interrupt();
+                    log.trace("Evicting WorkerBee {}: {}", key, cause);
+                    wb.stop();
                 }
             })
             .build();
@@ -104,45 +106,112 @@ public class TCPObjectServer {
                     serverSocketChannel.bind(new InetSocketAddress(port));
                     log.info ("Remoting Server started on socket {}", serverSocketChannel.socket());
 
-                    while (true)
-                    {
-                        log.trace("{} Waiting for connection", this);
-                        SocketChannel client = serverSocketChannel.accept();   // blocking accept
-                        log.trace("{} Accepted connection from {}", this, client.getRemoteAddress());
-                        TCPObjectSocket socket = workerSockets.poll(5, TimeUnit.SECONDS);
-                        if (socket == null) {
-                            log.warn("SEVERE: Server saturated: No available worker sockets");
-                            client.close();
-                            return;
-                        }
+                    while (true) {
 
-                        client.configureBlocking(true);
-                        client.setOption(StandardSocketOptions.TCP_NODELAY, true);
-                        client.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-                        socket.wrap(client);
+                        SocketChannel client = null;
+                        TCPObjectSocket socket = null;
 
-                        int payloadSize = socket.readHeader();
+                        // True once the socket belongs to a WorkerBee.
+                        boolean ownershipTransferred = false;
 
-                        long id = socket.getCombinedIds();
+                        try {
+                            log.trace("{} Waiting for connection", this);
 
-                        WorkerBee wb = workerBees.get(id, k -> {
-                            // log.info("---------- new bee for {} src:{} target:{}", id, socket.getSrcId(), socket.getTargetId());
-                            WorkerBee workerBee;
+                            client = serverSocketChannel.accept();
+
+                            log.trace("{} Accepted connection from {}",
+                                this, client.getRemoteAddress());
+
+                            socket = workerSockets.poll(5, TimeUnit.SECONDS);
+
+                            if (socket == null) {
+                                log.warn("Server saturated: No available worker sockets. Rejecting connection.");
+                                continue;
+                            }
+
+                            client.configureBlocking(true);
+                            client.setOption(StandardSocketOptions.TCP_NODELAY, true);
+                            client.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+
+                            socket.wrap(client);
+
+                            int payloadSize = socket.readHeader();
+                            long id = socket.getCombinedIds();
+                            log.trace("[{}] Received connection  {} -> {}, {}", actorSystem.getPort(),socket.getSrcId(), socket.getTargetId(), socket.getCombinedIds());
+
+                            // Handle an existing worker with the same ID.
+                            WorkerBee existing = workerBees.getIfPresent(id);
+
+                            if (existing != null) {
+                                if (existing.getThread() != null &&
+                                    existing.getThread().isAlive() &&
+                                    !existing.socket.isClosed()) {
+
+                                    log.info("WorkerBee {} already active. Rejecting duplicate connection.", id);
+
+                                    // Do NOT call returnSocket(socket).
+                                    // The finally block will do that.
+                                    continue;
+                                }
+
+                                workerBees.asMap().remove(id, existing);
+                            }
+
+                            // Create new worker
+                            WorkerBee newWorker = new WorkerBee(id, socket, payloadSize);
+
+                            Thread thread = Thread.ofVirtual().unstarted(newWorker);
+                            newWorker.setThread(thread);
+
+                            workerBees.put(id, newWorker);
+
                             try {
-                                workerBee = new WorkerBee(k, socket, payloadSize);
-                                Thread wbThread = Thread.startVirtualThread(workerBee);
-                                workerBee.setThread(wbThread);
-                                return workerBee;
+                                thread.start();
+                                ownershipTransferred = true;
+                            } catch (Exception e) {
+                                workerBees.asMap().remove(id, newWorker);
+                                throw e;
                             }
-                            catch (Exception e) {
-                                log.error("SEVERE: Error creating worker bee for {}: {}", id, e.getMessage());
-                                returnSocket(socket);
-                                return DUMMY_WB;
-                            }
+                        } catch (InterruptedException e) {
+                            // Server is shutting down.
+                            Thread.currentThread().interrupt();
+                            break;
 
-                        });
-                        if (wb == DUMMY_WB) {
-                            workerBees.invalidate(id);
+                        } catch (ClosedByInterruptException e) {
+                            // Normal shutdown: accept thread was interrupted.
+                            break;
+
+                        } catch (AsynchronousCloseException e) {
+                            // Normal shutdown: ServerSocketChannel was closed.
+                            break;
+
+                        } catch (ClosedChannelException e) {
+                            // Cannot continue accepting on a closed channel.
+                            log.info("Server socket channel closed");
+                            break;
+
+                        } catch (Exception e) {
+                            // Individual connection failure.
+                            // Continue serving other connections.
+                            log.warn("Error handling incoming connection: {}", e.getMessage(), e);
+                        } finally {
+
+                            if (!ownershipTransferred) {
+
+                                if (socket != null) {
+                                    // Closes the underlying SocketChannel,
+                                    // resets buffers, and returns the socket to the pool.
+                                    returnSocket(socket);
+
+                                } else if (client != null) {
+                                    // No TCPObjectSocket was obtained.
+                                    // Close the accepted connection directly.
+                                    try {
+                                        client.close();
+                                    } catch (IOException ignored) {
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -252,6 +321,7 @@ public class TCPObjectServer {
                 }
                 catch (Exception e) {
                     log.error("SEVERE: WorkerBee error in run {}: {}", id, e.getMessage());
+                    e.printStackTrace();
                     // break;
                 }
             }
@@ -259,7 +329,17 @@ public class TCPObjectServer {
                 log.trace("Stopped because of system shutdown");
 
             returnSocket(socket); // This will close the underlying socket
-            workerBees.invalidate(id); // Will not trigger eviction listener
+            workerBees.asMap().remove(id, this); // Will not trigger eviction listener
+        }
+
+        public void stop() {
+            // Close the channel to unblock a pending readHeader().
+            socket.close();
+
+            // Interrupt the worker's virtual thread.
+            if (thread != null) {
+                thread.interrupt();
+            }
         }
     }
 

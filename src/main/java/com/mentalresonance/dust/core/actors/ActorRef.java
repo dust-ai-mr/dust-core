@@ -24,9 +24,10 @@ import com.mentalresonance.dust.core.msgs.UnWatchMsg;
 import com.mentalresonance.dust.core.msgs.WatchMsg;
 import com.mentalresonance.dust.core.net.ActorSystemConnectionManager;
 import com.mentalresonance.dust.core.net.RemotePayloadSizeException;
-import com.mentalresonance.dust.core.net.TCPObjectSocket;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
 import java.nio.channels.ClosedByInterruptException;
@@ -200,8 +201,11 @@ public class ActorRef implements Serializable {
                 sentMessage = new SentMessage(message, sender);
                 if (! mailBox.dead) {
                     // log.info("Sending local {} to {} from {}", sentMessage.message(), this, sentMessage.sender());
+
+                    // Only wake the actor if it may be parked.
                     mailBox.queue.offer(sentMessage);
-                    LockSupport.unpark(mailboxThread);
+                    if (mailBox.waiting)
+                        LockSupport.unpark(mailboxThread);
                 }
                 else {
                     log.warn("{} mailbox is dead .. restarted ??", this);
@@ -246,40 +250,83 @@ public class ActorRef implements Serializable {
         Try to send message. Throw exception if fail
      */
     private void sendRemoteMessage(SentMessage sentMessage) throws Exception {
-        TCPObjectSocket socket;
-        URI uri = new URI(path);
+
+        URI uri = new URI(sentMessage.remotePath());
+
         Exception lastException = null;
+
         ActorRef sender = sentMessage.sender();
-        int senderId = null != sender ? sender.hashCode() : ActorRef.NullActorRefID;
+
+        int senderId = sender != null
+            ? sender.hashCode()
+            : ActorRef.NullActorRefID;
+
         int targetId = sentMessage.remotePath().hashCode();
 
-        // log.info("Sending remote {} to {} from {}", sentMessage.message(), sentMessage.remotePath(), sentMessage.sender());
-
         for (int i = 0; i < 5; i++) {
+
             try {
-                socket = actorSystemConnectionManager.getSocket(sender, senderId, targetId, uri);
-                socket.send(sentMessage);
-                return;
+                // Borrow a socket. Multiple callers can share the connection.
+                try (var lease = actorSystemConnectionManager.acquireSocket(
+                    sender, senderId, targetId, uri)) {
+
+                    try {
+                        lease.socket().send(sentMessage);
+                        return;  // Success
+                    }
+                    catch (RemotePayloadSizeException e) {
+                        // Serialization problem, not a connection failure.
+                        // Do not invalidate the socket.
+                        throw e;
+                    }
+                    catch (Exception e) {
+                        // Invalidate only the connection that failed.
+                        actorSystemConnectionManager.invalidate(lease);
+                        throw e;
+                    }
+                }
+                // Lease automatically released here.
+
             }
-            catch (InterruptedException | ClosedByInterruptException ie) {
-                log.error("Could not send message {} to {}: Interrupted ", sentMessage.message(), path);
-                lastException = ie;
-                try { Thread.sleep(1000); }
-                    catch (InterruptedException e) { Thread.sleep(1000); }
-                // i = 5;
+            catch (InterruptedException | ClosedByInterruptException e) {
+                log.error("Could not send message {} to {}: Interrupted",
+                    sentMessage.message(), uri);
+
+                lastException = e;
+
+                try {
+                    Thread.sleep(1000);
+                }
+                catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    throw ignored;
+                }
             }
-            catch (RemotePayloadSizeException re) {
-                log.error("Could not send message {} to {}: Payload size error" , sentMessage.message(), path);
-                lastException = re;
-                i = 5;
+            catch (RemotePayloadSizeException e) {
+                log.error("Could not send message {} to {}: Payload size error",
+                    sentMessage.message(), uri);
+
+                throw e;  // No point retrying
             }
             catch (Exception e) {
                 lastException = e;
-                Thread.sleep(10L);
+
+                log.debug("Remote send failed to {} (attempt {}/5): {}",
+                    uri, i + 1, e.getMessage());
+
+                if (i < 4)
+                    Thread.sleep(10L);
             }
-            actorSystemConnectionManager.returnSocket(senderId, targetId);
         }
-        throw new RuntimeException("Could not tell(%s) %s".formatted(uri, lastException.getMessage()));
+        throw new IOException(
+            "Could not tell(%s): %s".formatted(
+                uri,
+                lastException != null
+                    ? lastException.getMessage()
+                    : "Unknown error"
+            ),
+            lastException
+        );
     }
 
     /**

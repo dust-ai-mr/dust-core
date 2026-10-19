@@ -623,7 +623,6 @@ public class Actor implements Runnable {
                 // Todo: what ???
             }
             self.mailBox.dead = true;
-            self.mailBox.queue = null;
 
             if (null != parent) {
                 parent.tell(new _Stopped(), self);
@@ -638,40 +637,74 @@ public class Actor implements Runnable {
     }
 
     private SentMessage getSentMessage() throws InterruptedException {
+
         SentMessage sentMessage;
 
-        while(true) {
-            if (Thread.interrupted()) { // This resets the interrupt
-                throw new InterruptedException("Actor mailbox interrupted during take");
+        MailBox mailbox = self.mailBox;
+        MpscLinkedQueue<SentMessage> queue = mailbox.queue;
+
+        while (true) {
+
+            // Preserve existing interrupt handling.
+            // Thread.interrupted() clears the interrupt flag.
+            if (Thread.interrupted()) {
+                mailbox.waiting = false;
+                throw new InterruptedException(
+                    "Actor mailbox interrupted during take"
+                );
             }
-            MpscLinkedQueue<SentMessage> queue = self.mailBox.queue;
-            if (null == queue) {
-                log.error("{} Q is null", self.path);
-                throw new IllegalStateException("Mailbox queue is null");
-            }
+
+            // First check the stash, if enabled.
             if (useStash) {
                 useStash = null != (sentMessage = stashBuffer.pollFirst());
-                if (null == sentMessage)
+
+                if (sentMessage == null)
                     sentMessage = queue.poll();
             }
-            else
+            else {
                 sentMessage = queue.poll();
+            }
 
+            // Message available: return immediately.
             if (sentMessage != null) {
                 sender = sentMessage.sender();
                 return sentMessage;
             }
-            else {
-                // Before parking wait a tiny bit to see if another message comes in
-                for (int i = 0; i < 10; i++) {
-                    Thread.onSpinWait();
-                    if ((sentMessage = queue.poll()) != null) {
-                        sender = sentMessage.sender();
-                        return sentMessage;
-                    }
-                }
-                LockSupport.park();
+
+            /*
+             * Mailbox empty.
+             *
+             * Tell producers that we may park.
+             * Only the actor thread modifies waiting.
+             */
+            mailbox.waiting = true;
+
+            /*
+             * Critical second check.
+             *
+             * A producer may have enqueued a message between
+             * our first poll and setting waiting=true.
+             *
+             * Rechecking prevents a lost wake-up.
+             */
+            sentMessage = queue.poll();
+
+            if (sentMessage != null) {
+                mailbox.waiting = false;
+                sender = sentMessage.sender();
+                return sentMessage;
             }
+
+            /*
+             * No messages available.
+             *
+             * Park the virtual thread until another thread
+             * unparks it or it is interrupted.
+             */
+            LockSupport.park();
+
+            // We are no longer waiting.
+            mailbox.waiting = false;
         }
     }
 
@@ -1228,16 +1261,24 @@ public class Actor implements Runnable {
      * reference to the Actor's Q with a reference to the dead letter Q.
      */
     public static class MailBox {
+
         @Getter
         @Setter
-        Boolean dead = false;
-        @Getter
-        //MpscUnboundedArrayQueue<SentMessage> queue = new MpscUnboundedArrayQueue<>(128);
-        MpscLinkedQueue<SentMessage> queue = new MpscLinkedQueue<>();
+        volatile boolean dead = false;
 
-        /**
-         * Create mailbox
+        @Getter
+        final MpscLinkedQueue<SentMessage> queue =
+            new MpscLinkedQueue<>();
+
+        /*
+         * True when the actor's virtual thread is preparing
+         * to park or is already parked.
+         *
+         * Written only by the actor thread.
+         * Read by any thread calling ActorRef.tell().
          */
+        volatile boolean waiting = false;
+
         public MailBox() {}
     }
 

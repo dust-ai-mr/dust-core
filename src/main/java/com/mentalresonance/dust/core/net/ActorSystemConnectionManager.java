@@ -24,188 +24,253 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.mentalresonance.dust.core.actors.ActorRef;
 import lombok.extern.slf4j.Slf4j;
+
 import java.io.IOException;
-import java.io.Serializable;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.channels.SocketChannel;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Main connections between pairs of ActorRefs -- each has an int ID (hash of path) and we
- * combine them intop a Long
- */
+/** Reusable, leased connections between (source actor, target actor) pairs. */
 @Slf4j
 public class ActorSystemConnectionManager {
 
-    LinkedBlockingQueue<TCPObjectSocket> freeSockets = new LinkedBlockingQueue<>();;
-    Cache<Long, TCPObjectSocket> connections;
-    /**
-     * Prepare TCPObject sockets since building serializers is expensive
-     */
+    private static final int ACQUIRE_RETRIES = 100;
+    private static final long RETRY_DELAY_MS = 1;
+
+    private final LinkedBlockingQueue<TCPObjectSocket> freeSockets = new LinkedBlockingQueue<>();
+    private final Cache<Long, ManagedSocket> connections;
+
     public ActorSystemConnectionManager(int size, List<Class<?>> registeredClasses) {
+        if (size <= 0) throw new IllegalArgumentException("size must be positive");
 
-        connections = Caffeine
-            .newBuilder()
-            .maximumSize(size)
-            .removalListener((Long key, TCPObjectSocket socket, RemovalCause cause) -> {
-                log.trace("Removing socket: {} for cause: {}", socket, cause);
-                try {
-                    socket.send(null);
-                    socket.close();
-                }
-                catch (IOException ie) {
-                    // Pipe may have been broken
-                    socket.close();
-                }
-                catch (Exception e) {
-                    log.error("SEVERE: Error removing socket: {}", e.getMessage());
-                }
+        connections = Caffeine.newBuilder()
+                .maximumSize(size)
+                .removalListener((Long key, ManagedSocket entry, RemovalCause cause) -> {
+                    if (entry != null) {
+                        log.trace("Retiring socket for key {} ({})", key, cause);
+                        entry.retire();
+                    }
+                })
+                .build();
 
-                freeSockets.offer(socket);
-            })
-            .build();
-
-        for (int i = 0; i < size; ++i) {
+        for (int i = 0; i < size; i++) {
             freeSockets.add(new TCPObjectSocket(registeredClasses));
         }
     }
 
-    public TCPObjectSocket getSocket(ActorRef sender, int srcId, int targetId, URI uri) throws IOException, InterruptedException {
-        Long key = getCombinedIds(srcId, targetId);
-        int retries = 10;
-        Exception lastException = null;
+    /**
+     * Borrow a connection until the returned lease is closed. Every successful
+     * acquire must be paired with a close (prefer try-with-resources).
+     */
+    public SocketLease acquireSocket(ActorRef sender, int srcId, int targetId, URI uri)
+            throws IOException, InterruptedException {
+        long key = getCombinedIds(srcId, targetId);
+        IOException lastError = null;
 
-        while (--retries >= 0) {
+        for (int attempt = 0; attempt < ACQUIRE_RETRIES; attempt++) {
+            AtomicReference<ManagedSocket> borrowed = new AtomicReference<>();
             try {
-                if(connections.asMap().containsKey(key))
-                    log.trace("Reusing cached socket for {} -> {}", sender, uri);
+                // Per-key atomic operation: removal cannot take the entry out
+                // of the cache between finding it and acquiring its lease.
+                connections.asMap().compute(key, (id, current) -> {
+                    if (current != null) {
+                        if (current.acquire()) {
+                            borrowed.set(current);
+                            return current;
+                        }
+                        return null; // Already retired; remove stale mapping.
+                    }
 
-                TCPObjectSocket sock =  connections.get(key, (id) -> {
                     TCPObjectSocket socket = freeSockets.poll();
-                    if (null != socket) {
-                        try {
-                            log.trace("New connection {} to {} id={} srcId={} src={}", socket, uri, id, srcId, sender);
-                            socket.wrap(SocketChannel.open(new InetSocketAddress(uri.getHost(), uri.getPort())));
-                            socket.setSrcId(srcId);
-                            socket.setTargetId(targetId);
+                    if (socket == null) return null;
+
+                    try {
+                        socket.wrap(SocketChannel.open(
+                                new InetSocketAddress(uri.getHost(), uri.getPort())));
+                        if (socket.isClosed()) {
+                            throw new IOException("Socket failed to initialize for " + uri);
                         }
-                        catch (IOException e) {
-                            log.error("Failed to get free socket for {} -> {} [{}]", sender, uri, e.getMessage());
-                            try { socket.close(); } catch (Exception ignored) {}
-                            freeSockets.offer(socket);
-                            log.trace("Socket returned to free pool [Pool size={}]", freeSockets.size());
-                            throw new RuntimeException(e);
-                        }
+                        socket.setSrcId(srcId);
+                        socket.setTargetId(targetId);
+
+                        ManagedSocket fresh = new ManagedSocket(socket);
+                        fresh.acquire();
+                        borrowed.set(fresh);
+                        log.trace("Connected {} to {} [key={}]", sender, uri, id);
+                        return fresh;
+                    } catch (IOException e) {
+                        socket.close();
+                        freeSockets.offer(socket);
+                        throw new UncheckedIOException(e);
                     }
-                    return socket;
                 });
-
-                if (null == sock) {
-                    log.trace("No free sockets");
-                    /*
-                       No free sockets so walk connections to see if any related socket wraps a closed channel
-                       Return them and try again
-                     */
-                    AtomicBoolean done = new AtomicBoolean(false);
-                    connections.asMap().forEach((k, v) -> {
-                        if (v.isClosed()) {
-                            connections.invalidate(k);
-                            connections.cleanUp(); // Make sure evictions are done
-                            log.trace("Found closed socket for {} .. returning", k);
-                            done.set(true);
-                        }
-                    });
-                    /*
-                        No luck - so manually evict the oldest and try again
-                     */
-                    if (!done.get()) {
-                        connections.policy().eviction().ifPresent(policy -> {
-                            // The first element in the iterator is the "coldest" (LRU)
-                            // or next-in-line for eviction
-                            var oldestEntry = policy.coldest(1).entrySet().iterator().next();
-
-                            if (oldestEntry != null) {
-                                log.trace("Found socket to return: {}", oldestEntry.getKey());
-                                connections.invalidate(oldestEntry.getKey());
-                                connections.cleanUp(); // Make sure evictions are done
-                            }
-                            else {
-                                log.error("SEVERE: No sockets to return");
-                            }
-                        });
-                    }
-                    Thread.sleep(0, 500000); // Allow a little time for any cache manipulation to take root
-                                          // In the very rare case this isn't enough and we time out here
-                                          // the tell() will retry (handling the IOException)
-                    continue;
-
-                }
-                else if (sock.isClosed()) {
-                  /*
-                    Could be closed because we are reusing a cached socket that was closed by the remote server because its
-                    WorkerBee got evicted. So clean up and retry
-                  */
-                    connections.invalidate(key);
-                    continue;
-                }
-                return sock;
+            } catch (UncheckedIOException e) {
+                lastError = e.getCause();
             }
-            catch (RuntimeException e) {
-                lastException = e;
-                log.trace("Failed to get connection to: {} [{}]. Retrying.", uri, key);
-                connections.invalidate(key);
-                try {
-                    Thread.sleep(500L);
-                } catch (Exception ex) {
-                    log.error("SEVERE: Sleep in getSocket was interrupted");
+
+            ManagedSocket entry = borrowed.get();
+            if (entry != null) {
+                if (!entry.socket.isClosed()) {
+                    return new SocketLease(key, entry);
                 }
+                // A stale/closed connection; remove by identity, then release.
+                removeAndRetire(key, entry);
+                entry.release();
+            } else if (lastError == null) {
+                // No unused pool socket. Retire a cached connection to free one.
+                evictOneIdleCandidate();
             }
+            Thread.sleep(RETRY_DELAY_MS);
         }
-        log.error("SEVERE: Cannot get connection to remote actor: {} {} {}", uri, key, lastException);
-        // Socket is probably cached and damaged - return it to freepool where it will get cleaned up
-        // Then let our caller retry
-        connections.invalidate(key);
-        throw new IOException();
+
+        throw new IOException("Unable to acquire socket for " + uri, lastError);
     }
 
     /**
-        Force return of a socket. Usually done by client if a tell fails. This can be because of broken pipes
-     *  and invalidating it will close the underlying socket so a retry will work.
+     * Mark only the exact borrowed connection as bad. A newer replacement with
+     * the same key cannot accidentally be invalidated.
      */
-    public void returnSocket(int srcId, int targetId) {
-        connections.invalidate(getCombinedIds(srcId, targetId));
+    public void invalidate(SocketLease lease) {
+        removeAndRetire(lease.key, lease.entry);
     }
-
-    private long getCombinedIds(int srcId, int targetId) {
-        return (((long) srcId) << 32) | (targetId & 0xFFFFFFFFL);
-    }
-
 
     /**
-     * Takes a TCPObject and associates it with a key
+     * Only the thread that successfully removes this precise cache mapping
+     * may retire it immediately. The Caffeine removal listener is a fallback
+     * for automatic eviction and is harmless if it fires later.
      */
-    public static class WrappedTCPObjectSocket {
-        final Long key;
-        public String path; // To Actor when the Socket is used
-        /**
-         * The TCPObjectSocket
-         */
-        public final TCPObjectSocket tcpObjectSocket;
+    private boolean removeAndRetire(long key, ManagedSocket entry) {
+        if (!connections.asMap().remove(key, entry)) return false;
+        entry.retire();
+        return true;
+    }
 
-        /**
-         * Constructor
-         * @param key to associate with the socket
-         * @param tcpObjectSocket .. socket
-         */
-        public WrappedTCPObjectSocket(Long key, TCPObjectSocket tcpObjectSocket) {
+    /**
+     * First recycle a closed or unleased cached connection. Only if no idle
+     * candidate exists do we retire a leased connection; its cleanup then
+     * waits until its final borrower releases it.
+     *
+     * Do not hold a cache compute lock while doing socket I/O or recycling.
+     */
+    private boolean evictOneIdleCandidate() {
+        // Prefer an already closed connection. Conditional removal prevents
+        // retiring a replacement mapped to the same key.
+        for (Map.Entry<Long, ManagedSocket> e : connections.asMap().entrySet()) {
+            ManagedSocket entry = e.getValue();
+            if (entry.socket.isClosed() && removeAndRetire(e.getKey(), entry))
+                return true;
+        }
+
+        var eviction = connections.policy().eviction();
+        if (eviction.isEmpty()) return false;
+
+        // Caffeine's coldest(n) is a policy snapshot, not strict LRU.
+        // Examine multiple candidates so an actively leased cold entry does
+        // not force deferred recycling while idle entries remain.
+        var candidates = eviction.get().coldest(connections.asMap().size());
+        for (Map.Entry<Long, ManagedSocket> e : candidates.entrySet()) {
+            if (e.getValue().isIdle() && removeAndRetire(e.getKey(), e.getValue()))
+                return true;
+        }
+
+        // All observed candidates are busy. Retire one anyway; its last
+        // borrower will recycle it when released.
+        for (Map.Entry<Long, ManagedSocket> e : candidates.entrySet()) {
+            if (removeAndRetire(e.getKey(), e.getValue())) return true;
+        }
+        return false;
+    }
+
+    private static long getCombinedIds(int srcId, int targetId) {
+        return ((long) srcId << 32) | (targetId & 0xFFFFFFFFL);
+    }
+
+    public final class SocketLease implements AutoCloseable {
+        private final long key;
+        private final ManagedSocket entry;
+        private boolean released;
+
+        private SocketLease(long key, ManagedSocket entry) {
             this.key = key;
-            this.tcpObjectSocket = tcpObjectSocket;
-
+            this.entry = entry;
         }
 
+        public TCPObjectSocket socket() {
+            if (released) throw new IllegalStateException("Socket lease already closed");
+            return entry.socket;
+        }
+
+        @Override
+        public synchronized void close() {
+            if (!released) {
+                released = true;
+                entry.release();
+            }
+        }
     }
 
+    private final class ManagedSocket {
+        private final TCPObjectSocket socket;
+        private int borrowers;
+        private boolean retired;
+        private boolean cleaned;
+
+        private ManagedSocket(TCPObjectSocket socket) {
+            this.socket = socket;
+        }
+
+        private synchronized boolean acquire() {
+            if (retired) return false;
+            borrowers++;
+            return true;
+        }
+
+        private synchronized boolean isIdle() {
+            return borrowers == 0 && !retired;
+        }
+
+        private void release() {
+            boolean cleanup;
+            synchronized (this) {
+                if (borrowers <= 0) throw new IllegalStateException("Unbalanced socket release");
+                borrowers--;
+                cleanup = claimCleanupIfReady();
+            }
+            if (cleanup) recycle();
+        }
+
+        private void retire() {
+            boolean cleanup;
+            synchronized (this) {
+                retired = true;
+                cleanup = claimCleanupIfReady();
+            }
+            if (cleanup) recycle();
+        }
+
+        /** Called only under this object's monitor. */
+        private boolean claimCleanupIfReady() {
+            if (retired && borrowers == 0 && !cleaned) {
+                cleaned = true;
+                return true;
+            }
+            return false;
+        }
+
+        private void recycle() {
+            try {
+                if (!socket.isClosed()) socket.send(null); // Remote WorkerBee termination signal.
+            } catch (Exception e) {
+                log.debug("Could not send connection termination frame: {}", e.toString());
+            } finally {
+                socket.close();
+                freeSockets.offer(socket);
+            }
+        }
+    }
 }

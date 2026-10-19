@@ -73,7 +73,7 @@ public class TCPObjectSocket {
         return this;
     }
 
-    public void send(Object obj) throws Exception {
+    public synchronized void send(Object obj) throws Exception {
         if (obj == null) {
             ensureCapacity(HEADER_SIZE);
             buffer.clear();
